@@ -1,0 +1,18 @@
+{
+  "name": "Ben & Tori’s Wedding 50/50",
+  "short_name": "Wedding 50/50",
+  "description": "Win half the pot and help Ben and Tori celebrate their next chapter.",
+  "start_url": "/wedding-50-50/",
+  "scope": "/wedding-50-50/",
+  "display": "standalone",
+  "background_color": "#f7f2e9",
+  "theme_color": "#173f35",
+  "icons": [
+    {
+      "src": "/wedding-50-50/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
