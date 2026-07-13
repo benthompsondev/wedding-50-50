@@ -1,5 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
+import readline from "node:readline/promises";
+import { stdin, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -76,6 +78,12 @@ export function readEligibleEntries(csvText) {
       throw new Error(`Row ${rowIndex + 2} is missing an order ID, buyer name, or buyer email.`);
     }
 
+    const amountText = get("Amount Paid");
+    const amountPaid = amountText === "" ? 0 : Number(amountText);
+    if (!Number.isFinite(amountPaid) || amountPaid < 0) {
+      throw new Error(`Row ${rowIndex + 2} has a malformed amount paid.`);
+    }
+
     return {
       ticketNumber,
       orderId,
@@ -83,7 +91,7 @@ export function readEligibleEntries(csvText) {
       buyerEmail,
       buyerPhone: get("Buyer Phone"),
       package: get("Package"),
-      amountPaid: Number(get("Amount Paid")) || 0,
+      amountPaid,
       paymentConfirmedAt: get("Payment Confirmed At"),
     };
   });
@@ -107,6 +115,22 @@ export function chooseWinner(entries, index = randomInt(0, entries.length)) {
   if (!Array.isArray(entries) || entries.length === 0) throw new Error("There are no eligible tickets to draw.");
   if (!Number.isInteger(index) || index < 0 || index >= entries.length) throw new Error("The winner index is invalid.");
   return entries[index];
+}
+
+export function publicWinnerName(buyerName) {
+  const parts = String(buyerName).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "Unknown buyer";
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts.at(-1)[0].toUpperCase()}.`;
+}
+
+export function shuffleForPresentation(entries, randomIndex = (maximum) => randomInt(0, maximum)) {
+  const remaining = [...entries];
+  const shuffled = [];
+  while (remaining.length > 0) {
+    shuffled.push(remaining.splice(randomIndex(remaining.length), 1)[0]);
+  }
+  return shuffled;
 }
 
 function totalConfirmedSales(entries) {
@@ -136,6 +160,14 @@ export function buildDrawReport({ entries, winner, sourceFile, sourceFileHash, d
   };
 }
 
+async function writeDrawReport(report, reportDirectory) {
+  await mkdir(reportDirectory, { recursive: true });
+  const timestamp = report.drawRunAt.replace(/[:.]/g, "-");
+  const reportPath = path.resolve(reportDirectory, `draw-report-${timestamp}.json`);
+  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  return reportPath;
+}
+
 export async function runDraw(sourcePath, reportDirectory = path.resolve("draw-reports")) {
   const sourceBuffer = await readFile(sourcePath);
   const sourceText = sourceBuffer.toString("utf8");
@@ -148,36 +180,105 @@ export async function runDraw(sourcePath, reportDirectory = path.resolve("draw-r
     sourceFileHash: sha256(sourceBuffer),
   });
 
-  await mkdir(reportDirectory, { recursive: true });
-  const timestamp = report.drawRunAt.replace(/[:.]/g, "-");
-  const reportPath = path.resolve(reportDirectory, `draw-report-${timestamp}.json`);
-  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  const reportPath = await writeDrawReport(report, reportDirectory);
+  return { report, reportPath };
+}
+
+function writeLine(output, message = "") {
+  output.write(`${message}\n`);
+}
+
+async function waitForEnter(input, output) {
+  const prompt = readline.createInterface({ input, output });
+  await prompt.question("Press Enter to start the draw countdown...");
+  prompt.close();
+}
+
+function wait(milliseconds) {
+  return milliseconds > 0 ? new Promise((resolve) => setTimeout(resolve, milliseconds)) : Promise.resolve();
+}
+
+export async function runRecordDraw(sourcePath, {
+  reportDirectory = path.resolve("draw-reports"),
+  input = stdin,
+  output = stdout,
+  waitForInput = true,
+  countdownSeconds = 3,
+  presentationCycles,
+  presentationDelayMs = 180,
+  randomIndex = (maximum) => randomInt(0, maximum),
+  finalWinnerIndex,
+} = {}) {
+  const sourceBuffer = await readFile(sourcePath);
+  const sourceText = sourceBuffer.toString("utf8");
+  const entries = readEligibleEntries(sourceText);
+  const sourceFileHash = sha256(sourceBuffer);
+
+  writeLine(output, "Wedding 50/50 draw ready");
+  writeLine(output, `Eligible tickets: ${entries.length}`);
+  writeLine(output, `Confirmed sales: $${totalConfirmedSales(entries).toFixed(2)}`);
+  writeLine(output, `Source file SHA-256: ${sourceFileHash}`);
+  if (waitForInput) await waitForEnter(input, output);
+
+  for (let count = countdownSeconds; count > 0; count -= 1) {
+    writeLine(output, `${count}...`);
+    await wait(1000);
+  }
+
+  const presentation = shuffleForPresentation(entries, randomIndex);
+  const cycles = presentationCycles ?? Math.min(20, Math.max(6, entries.length * 2));
+  writeLine(output, "Presentation shuffle:");
+  for (let index = 0; index < cycles; index += 1) {
+    const entry = presentation[index % presentation.length];
+    writeLine(output, `  Ticket ${entry.ticketNumber} — ${publicWinnerName(entry.buyerName)}`);
+    await wait(presentationDelayMs);
+  }
+
+  const winner = chooseWinner(entries, finalWinnerIndex ?? randomIndex(entries.length));
+  const report = buildDrawReport({
+    entries,
+    winner,
+    sourceFile: path.resolve(sourcePath),
+    sourceFileHash,
+  });
+  const reportPath = await writeDrawReport(report, reportDirectory);
+
+  writeLine(output);
+  writeLine(output, `Winning ticket: ${winner.ticketNumber}`);
+  writeLine(output, `Winner: ${publicWinnerName(winner.buyerName)}`);
+  writeLine(output, `Draw report: ${reportPath}`);
 
   return { report, reportPath };
 }
 
-async function cli() {
-  const args = process.argv.slice(2);
-  const sourcePath = args[0];
-  if (!sourcePath || sourcePath.startsWith("-")) {
-    throw new Error("Usage: npm run draw -- ./path/to/draw-entries.csv [--report-dir ./draw-reports]");
-  }
-
+function reportDirectoryFromArgs(args) {
   const reportFlagIndex = args.indexOf("--report-dir");
-  const reportDirectory = reportFlagIndex >= 0 && args[reportFlagIndex + 1]
+  return reportFlagIndex >= 0 && args[reportFlagIndex + 1]
     ? path.resolve(args[reportFlagIndex + 1])
     : path.resolve("draw-reports");
-  const { report, reportPath } = await runDraw(path.resolve(sourcePath), reportDirectory);
+}
 
-  console.log("Wedding 50/50 draw complete");
-  console.log(`Winning ticket: ${report.winner.ticketNumber}`);
-  console.log(`Order ID: ${report.winner.orderId}`);
-  console.log(`Buyer name: ${report.winner.buyerName}`);
-  console.log(`Buyer email: ${report.winner.buyerEmail}`);
-  console.log(`Buyer phone: ${report.winner.buyerPhone || "(not provided)"}`);
-  console.log(`Total eligible tickets: ${report.totalEligibleTickets}`);
-  console.log(`Source file SHA-256: ${report.sourceFileHash}`);
-  console.log(`Draw report: ${reportPath}`);
+async function cli() {
+  const args = process.argv.slice(2);
+  const recordMode = args[0] === "--record";
+  const sourcePath = recordMode ? args[1] : args[0];
+  if (!sourcePath || sourcePath.startsWith("-")) {
+    throw new Error("Usage: npm run draw:record -- ./path/to/draw-entries.csv [--report-dir ./draw-reports]");
+  }
+
+  const reportDirectory = reportDirectoryFromArgs(args);
+  const result = recordMode
+    ? await runRecordDraw(path.resolve(sourcePath), { reportDirectory })
+    : await runDraw(path.resolve(sourcePath), reportDirectory);
+
+  if (!recordMode) {
+    console.log("Wedding 50/50 draw complete");
+    console.log(`Winning ticket: ${result.report.winner.ticketNumber}`);
+    console.log(`Winner: ${publicWinnerName(result.report.winner.buyerName)}`);
+    console.log(`Total eligible tickets: ${result.report.totalEligibleTickets}`);
+    console.log(`Source file SHA-256: ${result.report.sourceFileHash}`);
+    console.log(`Draw report: ${result.reportPath}`);
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

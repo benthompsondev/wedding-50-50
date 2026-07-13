@@ -29,6 +29,7 @@ const ORDER_HEADERS = [
   "Ticket Numbers",
   "Confirmation Sent",
   "Notes",
+  "Payment Instructions Sent",
 ];
 
 const DRAW_ENTRY_HEADERS = [
@@ -51,8 +52,8 @@ const PAYMENT_STATUSES = Object.freeze(["Pending", "Paid", "Refunded", "Cancelle
 
 const SITE_CONFIG = Object.freeze({
   eTransferAddress: "torigabriellerivard@hotmail.com",
-  salesClosingDate: "TODO_DRAW_CLOSING_DATE",
-  drawDate: "TODO_DRAW_DATE",
+  salesClosingDate: "2026-08-15T18:00:00-04:00",
+  drawDate: "2026-08-15T20:00:00-04:00",
   publicWebsiteUrl: "https://benthompsondev.github.io/wedding-50-50/",
   weddingWebsiteUrl: "https://withjoy.com/tori-rivard-and-ben",
   timezone: "America/Toronto",
@@ -75,12 +76,14 @@ const ORDER_COLUMN = Object.freeze({
   ticketNumbers: 14,
   confirmationSent: 15,
   notes: 16,
+  paymentInstructionsSent: 17,
 });
 
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("Wedding Draw")
     .addItem("Setup Spreadsheet", "setupSpreadsheet")
+    .addItem("Re-send Payment Instructions", "resendPaymentInstructions")
     .addItem("Confirm Selected Order", "confirmSelectedOrder")
     .addItem("Re-send Confirmation Email", "resendConfirmationEmail")
     .addItem("Mark Selected Order Refunded", "markSelectedOrderRefunded")
@@ -119,7 +122,24 @@ function doPost(e) {
       "",
       "No",
       "",
+      "No",
     ]);
+
+    const rowNumber = ordersSheet.getLastRow();
+    let paymentInstructionsStatus = "No";
+    let paymentInstructionsNote = "";
+
+    try {
+      sendPaymentInstructionsEmail_(payload);
+      paymentInstructionsStatus = "Yes";
+    } catch (emailError) {
+      paymentInstructionsNote = `Payment instructions email failed: ${publicErrorMessage_(emailError)}`;
+    }
+
+    ordersSheet.getRange(rowNumber, ORDER_COLUMN.paymentInstructionsSent).setValue(paymentInstructionsStatus);
+    if (paymentInstructionsNote) {
+      ordersSheet.getRange(rowNumber, ORDER_COLUMN.notes).setValue(paymentInstructionsNote);
+    }
 
     refreshSummary_();
     SpreadsheetApp.flush();
@@ -128,7 +148,9 @@ function doPost(e) {
       ok: true,
       orderId: payload.orderId,
       packageDisplay: payload.packageDisplay,
+      ticketQuantity: payload.ticketCount,
       amountDue: payload.amountDue,
+      paymentInstructionsSent: paymentInstructionsStatus === "Yes",
     });
   } catch (error) {
     return jsonResponse_({ ok: false, message: publicErrorMessage_(error) });
@@ -152,6 +174,14 @@ function doGet(e) {
 function setupSpreadsheet() {
   setupSpreadsheet_();
   SpreadsheetApp.getUi().alert("Wedding Draw setup complete. Orders, Summary, and Draw Entries are ready.");
+}
+
+function setupSpreadsheet_() {
+  getOrCreateSheet_(SHEET_NAMES.ORDERS, ORDER_HEADERS);
+  getOrCreateSheet_(SHEET_NAMES.SUMMARY, ["Metric", "Value"]);
+  getOrCreateSheet_(SHEET_NAMES.DRAW_ENTRIES, DRAW_ENTRY_HEADERS);
+  refreshSummary_();
+  refreshDrawEntries_();
 }
 
 function confirmSelectedOrder() {
@@ -213,7 +243,7 @@ function resendConfirmationEmail() {
       throw new Error("Only paid orders can receive a confirmation email.");
     }
 
-    const packageDefinition = getPackageDefinition_(record.packageId);
+    const packageDefinition = getOrderPackageDefinition_(record);
     const ticketNumbers = getTicketNumbers_(record.ticketNumbers);
     if (!packageDefinition || ticketNumbers.length === 0) {
       throw new Error("This paid order does not have a valid package or ticket number list.");
@@ -223,6 +253,27 @@ function resendConfirmationEmail() {
     ordersSheet.getRange(rowNumber, ORDER_COLUMN.confirmationSent).setValue("Yes");
     SpreadsheetApp.flush();
     SpreadsheetApp.getUi().alert(`Confirmation email re-sent for ${record.orderId}.`);
+  } catch (error) {
+    SpreadsheetApp.getUi().alert(publicErrorMessage_(error));
+  }
+}
+
+function resendPaymentInstructions() {
+  try {
+    const ordersSheet = getOrCreateSheet_(SHEET_NAMES.ORDERS, ORDER_HEADERS);
+    const rowNumber = getSelectedOrderRow_(ordersSheet);
+    const record = getOrderRecord_(ordersSheet, rowNumber);
+    if (!record.orderId || !record.email) {
+      throw new Error("The selected row is missing an order reference or email address.");
+    }
+
+    sendPaymentInstructionsEmail_(record);
+    ordersSheet.getRange(rowNumber, ORDER_COLUMN.paymentInstructionsSent).setValue("Yes");
+    ordersSheet.getRange(rowNumber, ORDER_COLUMN.notes).setValue(
+      appendNote_(record.notes, `Payment instructions re-sent ${formatDate_(new Date())}.`),
+    );
+    SpreadsheetApp.flush();
+    SpreadsheetApp.getUi().alert(`Payment instructions re-sent for ${record.orderId}.`);
   } catch (error) {
     SpreadsheetApp.getUi().alert(publicErrorMessage_(error));
   }
@@ -349,8 +400,21 @@ function validateSubmission_(payload) {
   }
 
   const packageId = cleanText_(request.packageId, 30);
-  const packageDefinition = getPackageDefinition_(packageId);
-  if (!packageDefinition) throw new Error("Please choose a valid ticket package.");
+  const hasQuantityField = Object.prototype.hasOwnProperty.call(request, "ticketQuantity") || Object.prototype.hasOwnProperty.call(request, "quantity");
+  const quantityValue = Object.prototype.hasOwnProperty.call(request, "ticketQuantity") ? request.ticketQuantity : request.quantity;
+  let storedPackageId = packageId;
+  let packageDefinition;
+
+  if (hasQuantityField) {
+    const ticketQuantity = parseTicketQuantity_(quantityValue);
+    if (ticketQuantity === null) throw new Error("Choose between 1 and 99 whole tickets.");
+    storedPackageId = "quantity";
+    packageDefinition = getQuantityPackageDefinition_(ticketQuantity);
+  } else {
+    packageDefinition = getPackageDefinition_(packageId);
+  }
+
+  if (!packageDefinition) throw new Error("Please choose a valid ticket quantity.");
 
   const fullName = cleanText_(request.fullName, 140);
   const email = cleanText_(request.email, 160).toLowerCase();
@@ -369,7 +433,7 @@ function validateSubmission_(payload) {
     email,
     phone: cleanText_(request.phone, 60),
     eTransferName,
-    packageId,
+    packageId: storedPackageId,
     packageDisplay: packageDefinition.display,
     ticketCount: packageDefinition.ticketCount,
     amountDue: packageDefinition.amount,
@@ -505,8 +569,9 @@ function validateOrderForConfirmation_(record) {
   if (record.paymentStatus === "Paid") throw new Error("This order is already marked Paid.");
   if (record.paymentStatus !== "Pending") throw new Error(`Only Pending orders can be confirmed. Current status: ${record.paymentStatus || "blank"}.`);
 
-  const packageDefinition = getPackageDefinition_(record.packageId);
+  const packageDefinition = getOrderPackageDefinition_(record);
   if (!packageDefinition) throw new Error("The selected order has an invalid package ID.");
+  if (Number(record.ticketCount) !== packageDefinition.ticketCount) throw new Error("The ticket count in the selected order does not match its pricing. Correct it before confirming.");
   if (Number(record.amountDue) !== packageDefinition.amount) throw new Error("The amount in the selected order does not match the package amount. Correct it before confirming.");
   return packageDefinition;
 }
@@ -532,21 +597,22 @@ function getHighestAssignedTicketNumber_(ordersSheet) {
 
 function sendConfirmationEmail_(record, packageDefinition, ticketNumbers) {
   const ticketList = ticketNumbers.join(", ");
-  const subject = "Your Ben & Tori Wedding 50/50 Tickets";
+  const subject = "Your Wedding 50/50 Ticket Numbers";
+  const salesClosingDate = formatPublicDateTime_(SITE_CONFIG.salesClosingDate);
+  const drawDate = formatPublicDateTime_(SITE_CONFIG.drawDate);
   const plainText = [
     `Hi ${record.fullName},`,
     "",
-    "Thank you for supporting Ben and Tori's wedding.",
+    "Your payment is confirmed — good luck!",
     `Order reference: ${record.orderId}`,
     `Amount received: $${Number(record.amountDue).toFixed(2)}`,
-    `Package: ${packageDefinition.display}`,
+    `Ticket quantity: ${packageDefinition.ticketCount}`,
     `Ticket number${ticketNumbers.length === 1 ? "" : "s"}: ${ticketList}`,
-    `Sales closing date: ${SITE_CONFIG.salesClosingDate}`,
-    `Draw date: ${SITE_CONFIG.drawDate}`,
+    `Sales close: ${salesClosingDate}`,
+    `Draw: ${drawDate}`,
     `Public website: ${SITE_CONFIG.publicWebsiteUrl}`,
-    `Wedding website: ${SITE_CONFIG.weddingWebsiteUrl}`,
     "",
-    "Good luck, and thank you for helping us celebrate.",
+    "Thank you for helping us celebrate.",
     "Ben and Tori",
   ].join("\n");
 
@@ -554,17 +620,61 @@ function sendConfirmationEmail_(record, packageDefinition, ticketNumbers) {
     <div style="background:#f8f3ea;padding:32px 16px;font-family:Arial,sans-serif;color:#21352f;">
       <div style="max-width:600px;margin:0 auto;background:#fffdf9;border-top:5px solid #173f35;padding:32px;">
         <p style="color:#b88f4e;font-size:12px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;">Ben &amp; Tori's Wedding 50/50</p>
-        <h1 style="font-family:Georgia,serif;font-size:32px;font-weight:normal;color:#173f35;">Your tickets are confirmed</h1>
+        <h1 style="font-family:Georgia,serif;font-size:32px;font-weight:normal;color:#173f35;">Your Wedding 50/50 Ticket Numbers</h1>
         <p>Hi ${escapeHtml_(record.fullName)},</p>
-        <p>Thank you for supporting Ben and Tori as they get ready for their wedding.</p>
+        <p><strong>Your payment is confirmed — good luck!</strong></p>
         <table style="width:100%;border-collapse:collapse;margin:24px 0;">
           <tr><td style="padding:10px 0;color:#6d7b73;">Order reference</td><td style="padding:10px 0;text-align:right;font-weight:bold;">${escapeHtml_(record.orderId)}</td></tr>
           <tr><td style="padding:10px 0;color:#6d7b73;">Amount received</td><td style="padding:10px 0;text-align:right;font-weight:bold;">$${Number(record.amountDue).toFixed(2)}</td></tr>
+          <tr><td style="padding:10px 0;color:#6d7b73;">Ticket quantity</td><td style="padding:10px 0;text-align:right;font-weight:bold;">${packageDefinition.ticketCount}</td></tr>
           <tr><td style="padding:10px 0;color:#6d7b73;">Ticket number${ticketNumbers.length === 1 ? "" : "s"}</td><td style="padding:10px 0;text-align:right;font-weight:bold;">${escapeHtml_(ticketList)}</td></tr>
         </table>
-        <p>Sales close: <strong>${escapeHtml_(SITE_CONFIG.salesClosingDate)}</strong><br />Draw date: <strong>${escapeHtml_(SITE_CONFIG.drawDate)}</strong></p>
-        <p><a href="${escapeHtml_(SITE_CONFIG.publicWebsiteUrl)}" style="color:#173f35;font-weight:bold;">Open the public draw website</a><br /><a href="${escapeHtml_(SITE_CONFIG.weddingWebsiteUrl)}" style="color:#173f35;font-weight:bold;">Visit our wedding website</a></p>
-        <p>Good luck, and thank you for helping us celebrate.</p>
+        <p>Sales close: <strong>${escapeHtml_(salesClosingDate)}</strong><br />Draw: <strong>${escapeHtml_(drawDate)}</strong></p>
+        <p><a href="${escapeHtml_(SITE_CONFIG.publicWebsiteUrl)}" style="color:#173f35;font-weight:bold;">Open the public draw website</a></p>
+        <p>Thank you for helping us celebrate.</p>
+        <p><strong>Ben and Tori</strong></p>
+      </div>
+    </div>`;
+
+  MailApp.sendEmail({ to: record.email, subject, body: plainText, htmlBody });
+}
+
+function sendPaymentInstructionsEmail_(record) {
+  const quantity = Number(record.ticketCount) || 0;
+  const amount = Number(record.amountDue) || 0;
+  const subject = "Your Wedding 50/50 Payment Instructions";
+  const plainText = [
+    `Hi ${firstName_(record.fullName)},`,
+    "",
+    "Your ticket request is saved.",
+    `Please send an Interac e-transfer of $${amount.toFixed(2)} to ${SITE_CONFIG.eTransferAddress}.`,
+    `Ticket quantity: ${quantity}`,
+    `Order reference: ${record.orderId}`,
+    "",
+    "Include the order reference in the transfer message if you can. Ticket numbers are emailed after payment is confirmed.",
+    "",
+    `Draw: ${formatPublicDateTime_(SITE_CONFIG.drawDate)}`,
+    SITE_CONFIG.publicWebsiteUrl,
+    "",
+    "Ben and Tori",
+  ].join("\n");
+
+  const htmlBody = `
+    <div style="background:#f8f3ea;padding:32px 16px;font-family:Arial,sans-serif;color:#21352f;">
+      <div style="max-width:600px;margin:0 auto;background:#fffdf9;border-top:5px solid #173f35;padding:32px;">
+        <p style="color:#b88f4e;font-size:12px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;">Ben &amp; Tori's Wedding 50/50</p>
+        <h1 style="font-family:Georgia,serif;font-size:32px;font-weight:normal;color:#173f35;">Your payment details</h1>
+        <p>Hi ${escapeHtml_(firstName_(record.fullName))},</p>
+        <p>Your ticket request is saved. Please send the exact amount below by Interac e-transfer.</p>
+        <table style="width:100%;border-collapse:collapse;margin:24px 0;">
+          <tr><td style="padding:10px 0;color:#6d7b73;">Send to</td><td style="padding:10px 0;text-align:right;font-weight:bold;overflow-wrap:anywhere;">${escapeHtml_(SITE_CONFIG.eTransferAddress)}</td></tr>
+          <tr><td style="padding:10px 0;color:#6d7b73;">Amount</td><td style="padding:10px 0;text-align:right;font-weight:bold;">$${amount.toFixed(2)}</td></tr>
+          <tr><td style="padding:10px 0;color:#6d7b73;">Tickets</td><td style="padding:10px 0;text-align:right;font-weight:bold;">${quantity}</td></tr>
+          <tr><td style="padding:10px 0;color:#6d7b73;">Order reference</td><td style="padding:10px 0;text-align:right;font-weight:bold;">${escapeHtml_(record.orderId)}</td></tr>
+        </table>
+        <p>Include the order reference in the transfer message if you can. Ticket numbers are emailed after payment is confirmed.</p>
+        <p>Draw: <strong>${escapeHtml_(formatPublicDateTime_(SITE_CONFIG.drawDate))}</strong></p>
+        <p><a href="${escapeHtml_(SITE_CONFIG.publicWebsiteUrl)}" style="color:#173f35;font-weight:bold;">Open the draw website</a></p>
         <p><strong>Ben and Tori</strong></p>
       </div>
     </div>`;
@@ -612,6 +722,7 @@ function recordFromRow_(row) {
     ticketNumbers: String(row[ORDER_COLUMN.ticketNumbers - 1] || "").trim(),
     confirmationSent: String(row[ORDER_COLUMN.confirmationSent - 1] || "").trim(),
     notes: String(row[ORDER_COLUMN.notes - 1] || "").trim(),
+    paymentInstructionsSent: String(row[ORDER_COLUMN.paymentInstructionsSent - 1] || "").trim(),
   };
 }
 
@@ -623,13 +734,21 @@ function getOrCreateSheet_(sheetName, headers) {
 }
 
 function ensureHeaders_(sheet, headers) {
-  const current = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-  const hasExpectedHeaders = headers.every((header, index) => current[index] === header);
-  if (!hasExpectedHeaders) {
-    if (sheet.getLastRow() > 0 && current.some((value) => value !== "")) {
+  const existingColumnCount = Math.max(sheet.getLastColumn(), 1);
+  const current = sheet.getRange(1, 1, 1, existingColumnCount).getValues()[0];
+  const hasAnyHeaders = current.some((value) => String(value || "").trim() !== "");
+
+  if (!hasAnyHeaders) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  } else {
+    const comparableHeaders = current.slice(0, Math.min(current.length, headers.length));
+    const hasExpectedPrefix = comparableHeaders.every((header, index) => header === headers[index]);
+    if (!hasExpectedPrefix || current.length > headers.length) {
       throw new Error(`The ${sheet.getName()} sheet has unexpected headers. Fix the header row before continuing.`);
     }
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    if (current.length < headers.length) {
+      sheet.getRange(1, current.length + 1, 1, headers.length - current.length).setValues([headers.slice(current.length)]);
+    }
   }
   styleHeader_(sheet, headers.length);
 }
@@ -650,6 +769,35 @@ function getSpreadsheet_() {
 
 function getPackageDefinition_(packageId) {
   return PACKAGE_DEFINITIONS[packageId] || null;
+}
+
+function calculateAmountForQuantity_(quantity) {
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return 0;
+  return Math.floor(quantity / 3) * 25 + (quantity % 3) * 10;
+}
+
+function parseTicketQuantity_(value) {
+  const text = String(value === null || value === undefined ? "" : value).trim();
+  if (!/^\d+$/.test(text)) return null;
+  const quantity = Number(text);
+  return Number.isInteger(quantity) && quantity >= 1 && quantity <= 99 ? quantity : null;
+}
+
+function getQuantityPackageDefinition_(ticketQuantity) {
+  const amount = calculateAmountForQuantity_(ticketQuantity);
+  if (!amount) return null;
+  return {
+    display: `${ticketQuantity} Ticket${ticketQuantity === 1 ? "" : "s"}`,
+    ticketCount: ticketQuantity,
+    amount,
+  };
+}
+
+function getOrderPackageDefinition_(record) {
+  if (record.packageId === "quantity") {
+    return getQuantityPackageDefinition_(parseTicketQuantity_(record.ticketCount));
+  }
+  return getPackageDefinition_(record.packageId);
 }
 
 function getTicketNumbers_(value) {
@@ -697,6 +845,15 @@ function getLastSummaryUpdate_() {
 
 function formatDate_(date) {
   return Utilities.formatDate(date, SITE_CONFIG.timezone, "yyyy-MM-dd HH:mm");
+}
+
+function formatPublicDateTime_(value) {
+  if (!value || String(value).toUpperCase().startsWith("TODO")) return "Date and time to be announced";
+  return Utilities.formatDate(new Date(value), SITE_CONFIG.timezone, "MMMM d, yyyy 'at' h:mm a");
+}
+
+function firstName_(fullName) {
+  return String(fullName || "").trim().split(/\s+/)[0] || "there";
 }
 
 function appendNote_(existing, note) {

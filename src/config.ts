@@ -28,21 +28,22 @@ export const ticketPackages: readonly TicketPackageConfig[] = [
 
 export const siteConfig = {
   title: "Ben & Tori’s Wedding 50/50",
-  tagline: "Win half the pot and help us celebrate our next chapter.",
+  tagline:
+    "We decided to skip the stag and doe and do one 50/50 instead. Half the pot goes to the winner, and the other half helps us with the wedding.",
   weddingDate: "October 10, 2026",
   weddingDateIso: "2026-10-10",
   location: "Cambridge, Ontario",
   eTransferAddress: "torigabriellerivard@hotmail.com",
   weddingWebsiteUrl: "https://withjoy.com/tori-rivard-and-ben",
 
-  // Replace these before launch. Leave them as TODO values until the dates are final.
-  salesClosingDate: "TODO_DRAW_CLOSING_DATE",
-  drawDate: "TODO_DRAW_DATE",
+  salesClosingDate: "2026-08-15T18:00:00-04:00",
+  drawDate: "2026-08-15T20:00:00-04:00",
+  drawVideoUrl: "",
   publicWebsiteUrl: "https://benthompsondev.github.io/wedding-50-50/",
   appsScriptEndpoint: "",
   publicPrizeCounterEnabled: true,
 
-  prizeFallbackText: "The final prize will be 50% of all confirmed ticket sales.",
+  prizeFallbackText: "The winner will receive half of the final confirmed total.",
   winnerAnnouncement: {
     announced: false,
     firstName: "",
@@ -79,10 +80,6 @@ export const siteConfig = {
       {
         src: "./images/first-dance.webp",
         alt: "Ben and Tori sharing a quiet moment together",
-      },
-      {
-        src: "./images/garden-kiss.jpg",
-        alt: "Ben and Tori kissing Lily between them",
       },
     ],
   },

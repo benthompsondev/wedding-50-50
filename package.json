@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
-    "test": "vitest run src && node --test tests/draw-winner.test.mjs",
+    "test": "vitest run src && node --test tests/draw-winner.test.mjs tests/apps-script-contract.test.mjs",
     "test:watch": "vitest",
-    "draw": "node scripts/draw-winner.mjs"
+    "draw": "node scripts/draw-winner.mjs",
+    "draw:record": "node scripts/draw-winner.mjs --record"
   },
   "dependencies": {
     "react": "^19.1.0",

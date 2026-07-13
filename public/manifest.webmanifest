@@ -1,7 +1,7 @@
 {
   "name": "Ben & Tori’s Wedding 50/50",
   "short_name": "Wedding 50/50",
-  "description": "Win half the pot and help Ben and Tori celebrate their next chapter.",
+  "description": "Join Ben and Tori’s wedding 50/50. Tickets are $10 each or 3 for $25.",
   "start_url": "/wedding-50-50/",
   "scope": "/wedding-50-50/",
   "display": "standalone",

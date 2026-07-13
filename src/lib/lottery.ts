@@ -5,6 +5,7 @@ export type EntryFormData = {
   email: string;
   phone: string;
   packageId: string;
+  ticketQuantity?: string;
   eTransferName: string;
   message: string;
   confirmed: boolean;
@@ -30,17 +31,58 @@ export type CountdownParts = {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORDER_ID_PATTERN = /^BT-[A-Z0-9]+-[A-Z0-9]{4}$/;
+export const MIN_TICKET_QUANTITY = 1;
+export const MAX_TICKET_QUANTITY = 99;
 
 export function getPackageById(packageId: string): TicketPackageConfig | undefined {
   return ticketPackages.find((ticketPackage) => ticketPackage.id === packageId);
 }
 
-export function calculateAmountDue(packageId: string): number {
-  return getPackageById(packageId)?.amount ?? 0;
+export function parseTicketQuantity(value: unknown): number | null {
+  const text = String(value ?? "").trim();
+  if (!/^\d+$/.test(text)) return null;
+
+  const quantity = Number(text);
+  if (!Number.isInteger(quantity) || quantity < MIN_TICKET_QUANTITY || quantity > MAX_TICKET_QUANTITY) {
+    return null;
+  }
+
+  return quantity;
 }
 
-export function calculateTicketCount(packageId: string): number {
-  return getPackageById(packageId)?.tickets ?? 0;
+export function calculateAmountForQuantity(quantity: number): number {
+  if (!Number.isInteger(quantity) || quantity < MIN_TICKET_QUANTITY || quantity > MAX_TICKET_QUANTITY) {
+    return 0;
+  }
+
+  return Math.floor(quantity / 3) * 25 + (quantity % 3) * 10;
+}
+
+export function calculateSavingsForQuantity(quantity: number): number {
+  const amount = calculateAmountForQuantity(quantity);
+  return amount > 0 ? quantity * 10 - amount : 0;
+}
+
+export function calculateAmountDue(selection: number | string): number {
+  if (typeof selection === "number") {
+    return calculateAmountForQuantity(selection);
+  }
+
+  const ticketPackage = getPackageById(selection);
+  if (ticketPackage) return ticketPackage.amount;
+
+  const quantity = parseTicketQuantity(selection);
+  return quantity === null ? 0 : calculateAmountForQuantity(quantity);
+}
+
+export function calculateTicketCount(selection: number | string): number {
+  if (typeof selection === "number") {
+    return Number.isInteger(selection) && selection >= MIN_TICKET_QUANTITY && selection <= MAX_TICKET_QUANTITY
+      ? selection
+      : 0;
+  }
+
+  return getPackageById(selection)?.tickets ?? parseTicketQuantity(selection) ?? 0;
 }
 
 export function calculateWinnerPrize(confirmedSales: number): number {
@@ -105,7 +147,11 @@ export function validateEntryForm(form: EntryFormData): EntryFormErrors {
     errors.email = "Please enter a valid email address.";
   }
 
-  if (!getPackageById(form.packageId)) {
+  if (form.ticketQuantity !== undefined) {
+    if (parseTicketQuantity(form.ticketQuantity) === null) {
+      errors.ticketQuantity = `Choose between ${MIN_TICKET_QUANTITY} and ${MAX_TICKET_QUANTITY} whole tickets.`;
+    }
+  } else if (!getPackageById(form.packageId)) {
     errors.packageId = "Please choose a ticket package.";
   }
 

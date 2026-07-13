@@ -7,7 +7,7 @@ This folder contains the private Google Apps Script that receives entry requests
 1. Create a new private Google Sheet.
 2. Open **Extensions > Apps Script** from that Sheet.
 3. Replace the default script with `Code.gs` and replace the manifest with `appsscript.json`.
-4. Update the `SITE_CONFIG` values in `Code.gs` with the final sales closing date, draw date, GitHub Pages URL, and wedding website URL.
+4. Confirm the `SITE_CONFIG` values in `Code.gs`, including the August 15, 2026 Toronto sales close and draw time.
 5. Save, reload the Sheet, and choose **Wedding Draw > Setup Spreadsheet**.
 6. Test the menu actions with a clearly marked test order before launch.
 7. Choose **Deploy > New deployment > Web app**.
@@ -21,14 +21,17 @@ This folder contains the private Google Apps Script that receives entry requests
 - `Draw Entries` contains one row per eligible paid ticket. It contains buyer details so it must remain private.
 - `Draw Snapshot yyyy-MM-dd HH-mm-ss` sheets are never overwritten. Each snapshot records the eligible rows, totals, and SHA-256 hash used for the final draw record.
 
+New orders accept 1–99 tickets. The server recalculates the amount with `floor(quantity / 3) * 25 + (quantity % 3) * 10` and ignores any client-supplied total. The `Payment Instructions Sent` column records the immediate payment email separately from the paid-ticket confirmation.
+
 ## Safe operating order
 
 1. Match an incoming e-transfer to an `Orders` row using the order reference, sender name, amount, and email.
 2. Select the matching row on `Orders`.
 3. Choose **Wedding Draw > Confirm Selected Order**.
 4. Review the assigned zero-padded ticket numbers and confirmation email result.
-5. Use **Re-send Confirmation Email** if the original email failed or the buyer asks for it again.
-6. Use **Mark Selected Order Refunded** when required. The original ticket numbers remain in `Orders` for audit history, but the order is removed from `Draw Entries` and its ticket numbers are never silently reused.
+5. Use **Re-send Payment Instructions** for a saved order whose first payment email failed.
+6. Use **Re-send Confirmation Email** if the paid-ticket email failed or the buyer asks for it again.
+7. Use **Mark Selected Order Refunded** when required. The original ticket numbers remain in `Orders` for audit history, but the order is removed from `Draw Entries` and its ticket numbers are never silently reused.
 
 The public `doGet?action=status` response contains only `confirmedSales`, `confirmedTicketCount`, `winnerPrize`, `paidOrderCount`, and `lastUpdated`. It never returns the Orders sheet, names, email addresses, phone numbers, order IDs, or ticket numbers.
 
