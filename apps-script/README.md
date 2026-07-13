@@ -25,14 +25,16 @@ Keep the spreadsheet and all exports private.
 
 ## Safe operating order
 
-1. Match the incoming e-transfer to a pending row using sender name, amount, and guest details.
+1. Match the incoming e-transfer using `Name for Jar`, `E-transfer Name`, amount, and email or phone if clarification is needed.
 2. Select that row in `Orders`.
 3. Choose **Confirm Selected Payment**.
 4. Confirm that the paid email was sent and `Jar Entries` grew by the expected count.
 5. Use the re-send menu items if an email failed.
 6. Use **Mark Selected Payment Refunded** when required. The Orders history remains, but those slips leave the eligible jar list.
 
-Before the draw, refresh the summary and jar rows, create a snapshot, then create the printable slips. The script checks that printable names equal eligible paid entries before and after it writes the sheet.
+Before the draw, reconcile every payment, refresh `Summary` and `Jar Entries`, create a private jar snapshot, and create the printable slips. Verify the counts, then print, cut, and fold every slip the same way. Record the physical draw, contact the winner, and add the winner details and video URL to the site.
+
+The script checks that printable names equal eligible paid entries before and after it writes the sheet.
 
 The website status response includes only `confirmedSales`, `confirmedEntryCount`, `winnerPrize`, `paidOrderCount`, and `lastUpdated`.
 

@@ -82,6 +82,29 @@ describe("Apps Script physical jar contract", () => {
     assert.equal(rows.filter((row) => row[0] === "Second Guest").length, 6);
   });
 
+  it("creates exactly one row for one paid entry", () => {
+    const rows = helpers.buildJarEntryRows_([paidRecord({ entryCount: 1, amountDue: 10 })]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0][5], 1);
+  });
+
+  it("rejects submissions at and after the closing time", () => {
+    const request = {
+      internalOrderId: "BT-CLOSE1-TEST",
+      jarName: "Sample Guest",
+      email: "sample@example.test",
+      phone: "",
+      eTransferName: "Sample Guest",
+      entryCount: 4,
+      message: "",
+      honeypot: "",
+    };
+    assert.throws(
+      () => helpers.validateSubmission_(request, new Date("2026-08-15T22:00:00.000Z")),
+      /Entries are closed/,
+    );
+  });
+
   it("keeps printable slip count equal to paid entry count", () => {
     const names = ["A", "A", "B", "C", "C", "C"];
     const grid = helpers.buildPrintableSlipGrid_(names, 2);

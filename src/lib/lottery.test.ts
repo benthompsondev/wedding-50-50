@@ -5,7 +5,10 @@ import {
   calculateWinnerPrize,
   createInternalOrderId,
   createSubmissionGuard,
+  getInitialBackendReadiness,
   getCountdownParts,
+  getWrappedPhotoIndex,
+  formatCurrency,
   isLaunchReady,
   isSalesClosed,
   parseEntryCount,
@@ -68,6 +71,14 @@ describe("wedding 50/50 helpers", () => {
     expect(isLaunchReady(close, draw, "")).toBe(false);
     expect(isLaunchReady(close, draw, "https://example.test/exec")).toBe(true);
     expect(isLaunchReady("TODO", draw, "https://example.test/exec")).toBe(false);
+    expect(getInitialBackendReadiness(close, draw, "")).toBe("preview");
+    expect(getInitialBackendReadiness(close, draw, "https://example.test/exec")).toBe("checking");
+  });
+
+  it("wraps photo navigation in both directions", () => {
+    expect(getWrappedPhotoIndex(0, -1, 6)).toBe(5);
+    expect(getWrappedPhotoIndex(5, 1, 6)).toBe(0);
+    expect(getWrappedPhotoIndex(2, 1, 6)).toBe(3);
   });
 
   it("enforces the sales cutoff and calculates the countdown", () => {
@@ -118,6 +129,8 @@ describe("wedding 50/50 helpers", () => {
   it("calculates half the pot", () => {
     expect(calculateWinnerPrize(35)).toBe(17.5);
     expect(calculateWinnerPrize(-10)).toBe(0);
+    expect(formatCurrency(17.5)).toBe("$17.50");
+    expect(formatCurrency(35)).toBe("$35");
   });
 
   it("keeps stale checkout language out of the public component", () => {
@@ -129,5 +142,20 @@ describe("wedding 50/50 helpers", () => {
       ["late", "payment"].join(" "),
     ];
     for (const phrase of removedPhrases) expect(source).not.toContain(phrase);
+  });
+
+  it("keeps the launch copy and accessible lightbox controls in the public component", () => {
+    const source = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+    expect(source).toContain("Why we’re doing this");
+    expect(source).toContain("Our little family");
+    expect(source).toContain("Lily is in charge of jar security and moral support.");
+    expect(source).toContain('role="dialog"');
+    expect(source).toContain('aria-modal="true"');
+    expect(source).toContain('event.key === "Escape"');
+    expect(source).toContain('event.key === "ArrowLeft"');
+    expect(source).toContain('event.key === "ArrowRight"');
+    const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+    expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(styles).toContain(".photo-thumb-label");
   });
 });

@@ -5,7 +5,9 @@ import {
   createInternalOrderId,
   createSubmissionGuard,
   formatCurrency,
+  getInitialBackendReadiness,
   getCountdownParts,
+  getWrappedPhotoIndex,
   isConfigDate,
   isLaunchReady,
   isSalesClosed,
@@ -14,6 +16,7 @@ import {
   parsePublicStatus,
   validateEntryForm,
   type CountdownParts,
+  type BackendReadiness,
   type EntryFormData,
   type EntryFormErrors,
   type PublicStatus,
@@ -160,32 +163,7 @@ function SharePaymentButton({ text }: { text: string }) {
   );
 }
 
-function PrizeCounter() {
-  const [status, setStatus] = useState<PublicStatus | null>(null);
-
-  useEffect(() => {
-    const endpoint = siteConfig.appsScriptEndpoint.trim();
-    if (!siteConfig.publicPrizeCounterEnabled || !endpoint) return undefined;
-
-    let active = true;
-    const separator = endpoint.includes("?") ? "&" : "?";
-    fetch(`${endpoint}${separator}action=status`, { headers: { Accept: "application/json" } })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Status request failed");
-        return response.json() as Promise<unknown>;
-      })
-      .then((payload) => {
-        if (active) setStatus(parsePublicStatus(payload));
-      })
-      .catch(() => {
-        if (active) setStatus(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
+function PrizeCounter({ status }: { status: PublicStatus | null }) {
   if (status) {
     return (
       <div className="prize-counter" aria-live="polite">
@@ -376,16 +354,36 @@ function PaymentDetailsCard({ confirmation, onStartOver }: { confirmation: Confi
   );
 }
 
-function PreviewEntryCard({ salesClosed }: { salesClosed: boolean }) {
+function PreviewEntryCard({ salesClosed, backendReadiness }: { salesClosed: boolean; backendReadiness: BackendReadiness }) {
+  const content = salesClosed
+    ? {
+        eyebrow: "Entries are closed",
+        title: "Thanks for joining in.",
+        body: "We’ll post the winner and video here after the draw.",
+      }
+    : backendReadiness === "checking"
+      ? {
+          eyebrow: "Getting the entry form ready…",
+          title: "One quick moment.",
+          body: "We’re making sure everything is ready before we open the form.",
+        }
+      : backendReadiness === "unavailable"
+        ? {
+            eyebrow: "Entries are temporarily unavailable",
+            title: "The jar needs a quick reset.",
+            body: "The entry form is having a moment. Try refreshing, or message us if it keeps happening.",
+          }
+        : {
+            eyebrow: "Entries opening soon",
+            title: "We’re getting the jar ready.",
+            body: "You can try the entry picker above. The form will open here when we’re ready to start accepting e-transfers.",
+          };
+
   return (
     <div className="form-card preview-card" aria-live="polite">
-      <p className="eyebrow">{salesClosed ? "Entries are closed" : "Entries opening soon"}</p>
-      <h3>{salesClosed ? "Thanks for joining in." : "We’re getting the jar ready."}</h3>
-      <p>
-        {salesClosed
-          ? "We’ll post the winner and video here after the draw."
-          : "You can try the entry picker above. The form will open here when we’re ready to start accepting e-transfers."}
-      </p>
+      <p className="eyebrow">{content.eyebrow}</p>
+      <h3>{content.title}</h3>
+      <p>{content.body}</p>
     </div>
   );
 }
@@ -396,22 +394,143 @@ function App() {
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const [publicStatus, setPublicStatus] = useState<PublicStatus | null>(null);
+  const [backendReadiness, setBackendReadiness] = useState<BackendReadiness>(() =>
+    getInitialBackendReadiness(
+      siteConfig.salesClosingDate,
+      siteConfig.drawDate,
+      siteConfig.appsScriptEndpoint,
+    ),
+  );
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
   const submissionGuard = useRef(createSubmissionGuard());
-  const launchReady = isLaunchReady(
+  const photoButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const lightboxRef = useRef<HTMLDivElement | null>(null);
+  const lightboxCloseRef = useRef<HTMLButtonElement | null>(null);
+  const lightboxTriggerIndex = useRef(0);
+  const touchStartX = useRef<number | null>(null);
+  const configurationReady = isLaunchReady(
     siteConfig.salesClosingDate,
     siteConfig.drawDate,
     siteConfig.appsScriptEndpoint,
   );
+  const launchReady = configurationReady && backendReadiness === "ready";
   const salesClosed = isSalesClosed(siteConfig.salesClosingDate);
+  const lightboxOpen = activePhotoIndex !== null;
   const parsedEntryCount = parseEntryCount(form.entryCount);
   const entryCount = parsedEntryCount ?? 1;
   const amountDue = calculateAmountForEntryCount(entryCount);
 
   useEffect(() => {
-    if (import.meta.env.DEV && !launchReady) {
+    if (!configurationReady) {
+      setBackendReadiness("preview");
+      setPublicStatus(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+    const endpoint = siteConfig.appsScriptEndpoint.trim();
+    const separator = endpoint.includes("?") ? "&" : "?";
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    setBackendReadiness("checking");
+
+    fetch(`${endpoint}${separator}action=status`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Status request failed");
+        return response.json() as Promise<unknown>;
+      })
+      .then((payload) => {
+        if (!active) return;
+        const status = parsePublicStatus(payload);
+        if (!status) throw new Error("Status response was invalid");
+        setPublicStatus(status);
+        setBackendReadiness("ready");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setPublicStatus(null);
+        setBackendReadiness("unavailable");
+        if (import.meta.env.DEV) console.warn("Wedding 50/50 backend health check failed.", error);
+      })
+      .finally(() => window.clearTimeout(timeout));
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [configurationReady]);
+
+  useEffect(() => {
+    if (import.meta.env.DEV && backendReadiness === "preview") {
       console.info("Wedding 50/50 preview mode is active locally.");
     }
-  }, [launchReady]);
+  }, [backendReadiness]);
+
+  useEffect(() => {
+    if (!lightboxOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.setTimeout(() => lightboxCloseRef.current?.focus(), 0);
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setActivePhotoIndex(null);
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setActivePhotoIndex((current) => current === null ? null : getWrappedPhotoIndex(current, -1, siteConfig.photos.gallery.length));
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setActivePhotoIndex((current) => current === null ? null : getWrappedPhotoIndex(current, 1, siteConfig.photos.gallery.length));
+        return;
+      }
+      if (event.key !== "Tab" || !lightboxRef.current) return;
+
+      const focusable = Array.from(lightboxRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      photoButtonRefs.current[lightboxTriggerIndex.current]?.focus();
+    };
+  }, [lightboxOpen]);
+
+  function openLightbox(index: number): void {
+    lightboxTriggerIndex.current = index;
+    setActivePhotoIndex(index);
+  }
+
+  function moveLightbox(change: number): void {
+    setActivePhotoIndex((current) => current === null ? null : getWrappedPhotoIndex(current, change, siteConfig.photos.gallery.length));
+  }
+
+  function closeLightbox(): void {
+    setActivePhotoIndex(null);
+  }
 
   function updateField<Key extends keyof EntryFormData>(field: Key, value: EntryFormData[Key]): void {
     setForm((current) => ({ ...current, [field]: value }));
@@ -503,7 +622,7 @@ function App() {
           <nav className="site-nav" aria-label="Main navigation">
             <a href="#entries">Entries</a>
             <a href="#how-it-works">How it works</a>
-            <a href="#story">Our story</a>
+            <a href="#story">Why we’re doing this</a>
             <a href="#good-to-know">Good to know</a>
           </nav>
           <a className="header-link" href="#join">Get entries <span aria-hidden="true">→</span></a>
@@ -551,7 +670,7 @@ function App() {
             <p>Every paid entry adds to the pot.</p>
           </div>
           <div className="prize-panel">
-            <PrizeCounter />
+            <PrizeCounter status={siteConfig.publicPrizeCounterEnabled ? publicStatus : null} />
             <div className="prize-panel-note">
               <span className="note-icon" aria-hidden="true">✓</span>
               <p><strong>One paid entry means one slip in the jar.</strong> Buy four entries and your name goes in four times.</p>
@@ -582,8 +701,8 @@ function App() {
           <ol className="steps-grid">
             <li><span>01</span><h3>Choose your entries</h3><p>Pick how many times you want your name in the jar.</p></li>
             <li><span>02</span><h3>Fill out the form</h3><p>Tell us your name and the name your e-transfer will come from.</p></li>
-            <li><span>03</span><h3>Send the e-transfer</h3><p>We’ll show you the exact amount and where to send it.</p></li>
-            <li><span>04</span><h3>We add your name</h3><p>Once the payment arrives, we’ll add one slip for every entry you bought.</p></li>
+            <li><span>03</span><h3>Send the e-transfer</h3><p>After you submit, send the amount shown to {siteConfig.eTransferAddress}.</p></li>
+            <li><span>04</span><h3>We add your name</h3><p>Once the e-transfer comes through, we’ll add your name to our private draw list once for every entry and print the slips for the jar.</p></li>
           </ol>
           <p className="steps-note">On August 15, we’ll mix all the slips in a jar, draw one on video, and post the winner.</p>
         </section>
@@ -591,7 +710,7 @@ function App() {
         <section className="section entry-section" id="join" aria-labelledby="entry-title">
           <div className="page-width">
             <div className="section-heading section-heading-light">
-              <p className="eyebrow eyebrow-light">Ready when you are</p>
+              <p className="eyebrow eyebrow-light">Join the draw</p>
               <h2 id="entry-title">Get your name in the jar</h2>
               <p>Choose your entries, fill this out, and we’ll show you the e-transfer details.</p>
             </div>
@@ -600,7 +719,7 @@ function App() {
               {confirmation ? (
                 <PaymentDetailsCard confirmation={confirmation} onStartOver={startOver} />
               ) : !launchReady || salesClosed ? (
-                <PreviewEntryCard salesClosed={salesClosed} />
+                <PreviewEntryCard salesClosed={salesClosed} backendReadiness={backendReadiness} />
               ) : (
                 <form className="form-card" onSubmit={handleSubmit} noValidate>
                   <input type="hidden" name="entryCount" value={form.entryCount} readOnly />
@@ -682,12 +801,12 @@ function App() {
         <section className="section page-width story-section" id="story" aria-labelledby="story-title">
           <div className="story-image-wrap">
             <img src={siteConfig.photos.family} alt="Ben and Tori sitting with Lily on the steps" width="1367" height="2048" loading="lazy" />
-            <span className="image-stamp">Jar security</span>
+            <span className="image-stamp">Our little family</span>
           </div>
           <div className="story-copy">
             <p className="eyebrow">Why we’re doing this</p>
-            <h2 id="story-title">A simpler kind of stag and doe.</h2>
-            <p>We thought about doing a stag and doe, but this felt simpler and a little more us. If you grab an entry or share the page, we really appreciate it. Either way, we’re excited to celebrate with everyone in October.</p>
+            <h2 id="story-title">A fun way to help us out.</h2>
+            <p>We thought about doing a full stag and doe, but this felt simpler and gives us more time to plan and get everything ready for the wedding. The 50/50 is a fun way for our friends and family to help with wedding and honeymoon costs, and someone gets to take home half the pot. If you grab an entry or share the page, we really appreciate it.</p>
             <p>Lily is in charge of jar security and moral support.</p>
             <a className="text-button" href={siteConfig.weddingWebsiteUrl} target="_blank" rel="noreferrer">Our wedding details <span aria-hidden="true">↗</span></a>
           </div>
@@ -731,7 +850,7 @@ function App() {
           </div>
           <div className="good-to-know-grid">
             <article><h3>How much are entries?</h3><p>Entries are $10 each or 3 for $25. Every entry puts your name in the jar once.</p></article>
-            <article><h3>How do I pay?</h3><p>Fill out the form first and we’ll show you the e-transfer amount and email.</p></article>
+            <article><h3>How do I pay?</h3><p>Fill out the form first, then send the amount shown by e-transfer to {siteConfig.eTransferAddress}. Use the same first and last name you entered on the form so we can match the payment. Once it comes through, we’ll add your name to the jar once for every entry.</p></article>
             <article><h3>When is my name added?</h3><p>Once we receive your e-transfer, we’ll add your name to the jar once for every entry you bought.</p></article>
             <article><h3>How is the winner picked?</h3><p>We’ll mix all the name slips in a jar and draw one on video on August 15.</p></article>
             <article><h3>How will the winner know?</h3><p>We’ll contact the winner directly and post their first name and last initial here.</p></article>
@@ -740,10 +859,60 @@ function App() {
 
         <section className="photo-strip" aria-label="A few favourite photos of Ben, Tori, and Lily">
           <div className="photo-strip-inner">
-            {siteConfig.photos.gallery.map((photo) => <img key={photo.src} src={photo.src} alt={photo.alt} loading="lazy" />)}
+            {siteConfig.photos.gallery.map((photo, index) => (
+              <button
+                className="photo-thumb"
+                type="button"
+                key={photo.src}
+                ref={(element) => { photoButtonRefs.current[index] = element; }}
+                aria-label={`Open photo ${index + 1} of ${siteConfig.photos.gallery.length}: ${photo.alt}`}
+                onClick={() => openLightbox(index)}
+              >
+                <img src={photo.src} alt="" loading="lazy" />
+                <span className="photo-thumb-label" aria-hidden="true">View photo</span>
+              </button>
+            ))}
           </div>
         </section>
       </main>
+
+      {activePhotoIndex !== null ? (
+        <div
+          className="lightbox-backdrop"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeLightbox(); }}
+        >
+          <div
+            className="lightbox-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lightbox-position"
+            aria-describedby="lightbox-caption"
+            ref={lightboxRef}
+          >
+            <div className="lightbox-toolbar">
+              <p id="lightbox-position">Photo {activePhotoIndex + 1} of {siteConfig.photos.gallery.length}</p>
+              <button className="lightbox-control lightbox-close" type="button" ref={lightboxCloseRef} aria-label="Close photo viewer" onClick={closeLightbox}>×</button>
+            </div>
+            <div
+              className="lightbox-media"
+              onTouchStart={(event) => { touchStartX.current = event.changedTouches[0]?.clientX ?? null; }}
+              onTouchEnd={(event) => {
+                if (touchStartX.current === null) return;
+                const distance = (event.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current;
+                touchStartX.current = null;
+                if (Math.abs(distance) >= 48) moveLightbox(distance > 0 ? -1 : 1);
+              }}
+            >
+              <img src={siteConfig.photos.gallery[activePhotoIndex].src} alt={siteConfig.photos.gallery[activePhotoIndex].alt} />
+            </div>
+            <div className="lightbox-footer">
+              <button className="lightbox-control lightbox-nav" type="button" aria-label="Previous photo" onClick={() => moveLightbox(-1)}>← <span>Previous</span></button>
+              <p id="lightbox-caption">{siteConfig.photos.gallery[activePhotoIndex].alt}</p>
+              <button className="lightbox-control lightbox-nav" type="button" aria-label="Next photo" onClick={() => moveLightbox(1)}><span>Next</span> →</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <footer className="site-footer">
         <div className="page-width footer-inner">

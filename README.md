@@ -10,7 +10,7 @@ Ben and Tori will print and cut those name slips, mix them in a physical jar, an
 - `apps-script/` contains the private Google Sheet workflow and email automation.
 - `.github/workflows/deploy.yml` tests, builds, and deploys `dist/` through GitHub Pages.
 
-The public site never receives the private ledger. Its status request contains aggregate totals only. While `appsScriptEndpoint` is blank in `src/config.ts`, the site stays in preview mode and shows **Entries opening soon**.
+The public site never receives the private ledger. Its status request contains aggregate totals only. The form stays hidden until the configured backend answers with a valid status response. If that check fails, guests see a short try-again message instead of a broken form.
 
 ## Local development
 
@@ -61,6 +61,8 @@ Public URL: <https://benthompsondev.github.io/wedding-50-50/>
 Do not commit `dist/`. GitHub Actions creates it during deployment.
 
 ## Private Google Sheet setup
+
+The private Sheet and web app are installed and tested. These steps are kept here for recovery or a future redeployment.
 
 The Sheet contains guest names, contact information, payment state, and internal IDs. Keep it private.
 
@@ -127,13 +129,13 @@ No names, emails, phone numbers, internal IDs, messages, or individual payment r
 
 ## Troubleshooting
 
-- **The form is hidden:** this is expected while `appsScriptEndpoint` is blank.
+- **The form is hidden:** confirm the endpoint is configured, the web app still allows anyone with the link, and `?action=status` returns valid aggregate totals.
 - **A submission fails:** check the browser console and Apps Script execution log. Keep it in the error state unless the backend returns `{ "ok": true }`.
 - **The Sheet menu is missing:** reload the bound Sheet or run `setupSpreadsheet` once from the Apps Script editor.
 - **An email fails:** check MailApp quota and the row’s `Notes` column, then use the matching re-send menu item.
 - **The jar count is wrong:** stop, inspect every paid Orders row, correct the private ledger, and refresh `Jar Entries` before printing.
 - **GitHub Pages assets fail:** keep `base: "/wedding-50-50/"` in `vite.config.ts`, run a local build, and confirm Pages uses GitHub Actions.
 
-## Remaining launch work
+## Launch status
 
-The public site is intentionally in preview mode. The only launch work left is private: create the Sheet, install and deploy Apps Script, add the endpoint, complete the fake-data test, and then remove or clearly archive that test row before sharing the form.
+The private Sheet, email flow, payment confirmation, jar rows, printable slips, refund path, and server-side pricing check passed with disposable test data. The fake rows, slips, totals, and test emails were removed before launch.

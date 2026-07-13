@@ -10,7 +10,7 @@ export const siteConfig = {
   salesClosingDate: "2026-08-15T18:00:00-04:00",
   drawDate: "2026-08-15T20:00:00-04:00",
   publicWebsiteUrl: "https://benthompsondev.github.io/wedding-50-50/",
-  appsScriptEndpoint: "",
+  appsScriptEndpoint: "https://script.google.com/macros/s/AKfycbwlbtpUP7e4_3JVZ_xZ6v2HhdentgdY3ZT4jf3V5KE4FlrW4JDijxJDPRGBLn5dpXUkjw/exec",
   publicPrizeCounterEnabled: true,
 
   winnerAnnouncement: {

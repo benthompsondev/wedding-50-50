@@ -18,6 +18,8 @@ export type PublicStatus = {
   lastUpdated: string;
 };
 
+export type BackendReadiness = "preview" | "checking" | "ready" | "unavailable";
+
 export type CountdownParts = {
   days: number;
   hours: number;
@@ -60,6 +62,19 @@ export function isConfigDate(value: string): boolean {
 
 export function isLaunchReady(closingDate: string, drawDate: string, endpoint: string): boolean {
   return isConfigDate(closingDate) && isConfigDate(drawDate) && Boolean(endpoint.trim());
+}
+
+export function getInitialBackendReadiness(
+  closingDate: string,
+  drawDate: string,
+  endpoint: string,
+): BackendReadiness {
+  return isLaunchReady(closingDate, drawDate, endpoint) ? "checking" : "preview";
+}
+
+export function getWrappedPhotoIndex(currentIndex: number, change: number, photoCount: number): number {
+  if (!Number.isInteger(currentIndex) || !Number.isInteger(change) || photoCount < 1) return 0;
+  return (currentIndex + change + photoCount) % photoCount;
 }
 
 export function isSalesClosed(closingDate: string, now = new Date()): boolean {
@@ -152,11 +167,12 @@ export function parsePublicStatus(value: unknown): PublicStatus | null {
 }
 
 export function formatCurrency(value: number): string {
+  const hasCents = Math.round(value * 100) % 100 !== 0;
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "CAD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
   }).format(value);
 }
 
