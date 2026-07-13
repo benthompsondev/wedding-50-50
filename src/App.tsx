@@ -806,7 +806,7 @@ function App() {
           <div className="story-copy">
             <p className="eyebrow">Why we’re doing this</p>
             <h2 id="story-title">A fun way to help us out.</h2>
-            <p>We thought about doing a full stag and doe, but this felt simpler and gives us more time to plan and get everything ready for the wedding. The 50/50 is a fun way for our friends and family to help with wedding and honeymoon costs, and someone gets to take home half the pot. If you grab an entry or share the page, we really appreciate it.</p>
+            <p>We thought about doing a full stag and doe, but this felt simpler and gives us more time to plan and get everything ready for the wedding. The 50/50 is a fun way for our friends and family to help us with wedding and honeymoon costs — and someone gets to take home half the pot. If you grab an entry or share the page, we really appreciate it.</p>
             <p>Lily is in charge of jar security and moral support.</p>
             <a className="text-button" href={siteConfig.weddingWebsiteUrl} target="_blank" rel="noreferrer">Our wedding details <span aria-hidden="true">↗</span></a>
           </div>
