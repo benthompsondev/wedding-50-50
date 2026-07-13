@@ -1,17 +1,21 @@
 # Ben & Tori Wedding 50/50 launch checklist
 
-Use this short checklist after the technical setup is complete.
+- [x] Confirm the wedding date, entry close, and draw time.
+- [x] Confirm the GitHub Pages URL and project base path.
+- [x] Keep the Apps Script endpoint blank until the private backend is ready.
+- [ ] Create the private Google Sheet and install the Apps Script files.
+- [ ] Run **Wedding Draw > Setup Spreadsheet**.
+- [ ] Deploy the web app and connect its `/exec` URL.
+- [ ] Submit one fake guest entry from the deployed site.
+- [ ] Verify the trusted amount and pending Orders row.
+- [ ] Verify the e-transfer details email.
+- [ ] Confirm the fake payment and verify the paid confirmation email.
+- [ ] Confirm `Jar Entries` has exactly one row per paid entry.
+- [ ] Create printable slips and compare the alert count to `Jar Entries`.
+- [ ] Verify the public counter exposes aggregate totals only.
+- [ ] Remove or clearly archive all fake test data.
+- [ ] Check the site and form at 1440px, 768px, 390px, and 320px wide.
+- [ ] Preview the social share card on a phone.
+- [ ] Share the live link with friends and family.
 
-- [x] Confirm the wedding date, sales closing date, and draw date.
-- [x] Add the public GitHub Pages URL.
-- [ ] Keep the site in preview mode until the private backend is ready.
-- [ ] Connect the Google Apps Script endpoint.
-- [ ] Submit one clearly marked test entry.
-- [ ] Send and match the test e-transfer.
-- [ ] Confirm the test order and verify the ticket email.
-- [ ] Confirm the payment-instruction email and paid-ticket email separately.
-- [ ] Check that the public prize counter updates without showing private details.
-- [ ] Check the site on a phone, including the form at 320px wide.
-- [ ] Preview the Facebook share card and confirm the photo and title look right.
-- [ ] Remove or clearly archive all test orders before launch.
-- [ ] Launch the link to friends and family.
+Before the recorded draw, reconcile payments, create a private jar snapshot, print and count every slip, cut and fold them consistently, mix the physical jar thoroughly, and draw one name on video.

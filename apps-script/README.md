@@ -1,40 +1,39 @@
-# Google Apps Script backend
+# Private Apps Script backend
 
-This folder contains the private Google Apps Script that receives entry requests, maintains the private Google Sheet ledger, sends paid-ticket emails, and exposes only aggregate public status.
+This bound Google Apps Script receives form submissions, keeps the private payment ledger, sends both emails, expands paid entries into name slips, and exposes aggregate totals to the public site.
 
-## Deploying it
+## Install
 
 1. Create a new private Google Sheet.
-2. Open **Extensions > Apps Script** from that Sheet.
-3. Replace the default script with `Code.gs` and replace the manifest with `appsscript.json`.
-4. Confirm the `SITE_CONFIG` values in `Code.gs`, including the August 15, 2026 Toronto sales close and draw time.
-5. Save, reload the Sheet, and choose **Wedding Draw > Setup Spreadsheet**.
-6. Test the menu actions with a clearly marked test order before launch.
-7. Choose **Deploy > New deployment > Web app**.
-8. Execute the app as the deploying account and allow access to anyone with the link.
-9. Copy the web app URL into `src/config.ts` as `appsScriptEndpoint`.
+2. Open **Extensions > Apps Script**.
+3. Copy in `Code.gs` and `appsscript.json`.
+4. Review `SITE_CONFIG`.
+5. Save and reload the Sheet.
+6. Choose **Wedding Draw > Setup Spreadsheet**.
+7. Deploy as a web app that runs as the owner and allows anyone with the link.
+8. Put the `/exec` URL in `src/config.ts` only after the private workflow passes a fake-data test.
 
-## Sheets created
+## Private sheets
 
-- `Orders` is the source ledger. It contains names, email addresses, phone numbers, payment status, ticket numbers, and notes. Keep this Sheet private.
-- `Summary` contains aggregate operating totals for Ben and Tori.
-- `Draw Entries` contains one row per eligible paid ticket. It contains buyer details so it must remain private.
-- `Draw Snapshot yyyy-MM-dd HH-mm-ss` sheets are never overwritten. Each snapshot records the eligible rows, totals, and SHA-256 hash used for the final draw record.
+- `Orders` is the source ledger. It contains contact and payment information.
+- `Summary` contains operating totals.
+- `Jar Entries` contains one row per eligible paid entry.
+- `Printable Jar Slips` contains only the names to print and cut.
+- `Jar Snapshot ...` sheets preserve timestamped private copies and a hash.
 
-New orders accept 1–99 tickets. The server recalculates the amount with `floor(quantity / 3) * 25 + (quantity % 3) * 10` and ignores any client-supplied total. The `Payment Instructions Sent` column records the immediate payment email separately from the paid-ticket confirmation.
+Keep the spreadsheet and all exports private.
 
 ## Safe operating order
 
-1. Match an incoming e-transfer to an `Orders` row using the order reference, sender name, amount, and email.
-2. Select the matching row on `Orders`.
-3. Choose **Wedding Draw > Confirm Selected Order**.
-4. Review the assigned zero-padded ticket numbers and confirmation email result.
-5. Use **Re-send Payment Instructions** for a saved order whose first payment email failed.
-6. Use **Re-send Confirmation Email** if the paid-ticket email failed or the buyer asks for it again.
-7. Use **Mark Selected Order Refunded** when required. The original ticket numbers remain in `Orders` for audit history, but the order is removed from `Draw Entries` and its ticket numbers are never silently reused.
+1. Match the incoming e-transfer to a pending row using sender name, amount, and guest details.
+2. Select that row in `Orders`.
+3. Choose **Confirm Selected Payment**.
+4. Confirm that the paid email was sent and `Jar Entries` grew by the expected count.
+5. Use the re-send menu items if an email failed.
+6. Use **Mark Selected Payment Refunded** when required. The Orders history remains, but those slips leave the eligible jar list.
 
-The public `doGet?action=status` response contains only `confirmedSales`, `confirmedTicketCount`, `winnerPrize`, `paidOrderCount`, and `lastUpdated`. It never returns the Orders sheet, names, email addresses, phone numbers, order IDs, or ticket numbers.
+Before the draw, refresh the summary and jar rows, create a snapshot, then create the printable slips. The script checks that printable names equal eligible paid entries before and after it writes the sheet.
 
-## CORS and testing
+The website status response includes only `confirmedSales`, `confirmedEntryCount`, `winnerPrize`, `paidOrderCount`, and `lastUpdated`.
 
-Google Apps Script web apps can redirect their response through a Google-hosted URL. The website uses a simple `text/plain` JSON POST to avoid a browser preflight and only shows success when it can read an explicit `{ "ok": true }` response. Test from the deployed GitHub Pages URL, not only from a local file. If the browser reports a CORS or redirect error, do not tell buyers that the order succeeded. Fix the deployment or endpoint configuration first.
+The backend recalculates pricing with `floor(entryCount / 3) * 25 + (entryCount % 3) * 10`. A browser-supplied total is ignored.

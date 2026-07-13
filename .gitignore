@@ -18,7 +18,6 @@ temp/
 
 # Private CSV and spreadsheet exports
 *.csv
-!tests/fixtures/*.csv
 private-csv/
 spreadsheet-exports/
 exports/
