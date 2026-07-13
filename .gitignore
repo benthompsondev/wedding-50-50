@@ -1,0 +1,45 @@
+node_modules/
+dist/
+.vite/
+coverage/
+draw-reports/
+draw-reports-test/
+
+# Local temporary files and environment values
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.local
+.env
+.env.*
+!.env.example
+
+# Private CSV and spreadsheet exports
+*.csv
+!tests/fixtures/*.csv
+private-csv/
+spreadsheet-exports/
+exports/
+*.xlsx
+*.xls
+*.ods
+*.gsheet
+
+# Credentials and key material
+credentials/
+secrets/
+*.pem
+*.p12
+*.pfx
+*.key
+*.secret
+*.secret.*
+
+.DS_Store
+
+# Local Apps Script exports and scratch files
+apps-script/.clasp.json
+apps-script/.claspignore
+apps-script/*.zip
