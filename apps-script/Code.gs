@@ -226,7 +226,7 @@ function setupSpreadsheet_() {
   const ordersSheet = spreadsheet.getSheetByName(SHEET_NAMES.ORDERS) || spreadsheet.insertSheet(SHEET_NAMES.ORDERS);
   migrateOrdersSheet_(ordersSheet);
   const summarySheet = getOrCreateSheet_(SHEET_NAMES.SUMMARY, ["Metric", "Value"]);
-  const entriesSheet = getOrCreateSheet_(SHEET_NAMES.JAR_ENTRIES, JAR_ENTRY_HEADERS);
+  const entriesSheet = getOrCreatePlainSheet_(SHEET_NAMES.JAR_ENTRIES);
   const slipsSheet = getOrCreatePlainSheet_(SHEET_NAMES.PRINTABLE_SLIPS);
 
   formatOrdersSheet_(ordersSheet);
@@ -388,7 +388,7 @@ function refreshSummary_() {
 
 function refreshJarEntries_() {
   const ordersSheet = getOrCreateSheet_(SHEET_NAMES.ORDERS, ORDER_HEADERS);
-  const entriesSheet = getOrCreateSheet_(SHEET_NAMES.JAR_ENTRIES, JAR_ENTRY_HEADERS);
+  const entriesSheet = getOrCreatePlainSheet_(SHEET_NAMES.JAR_ENTRIES);
   const rows = buildJarEntryRows_(getOrderRecords_(ordersSheet));
 
   entriesSheet.clear();
@@ -556,7 +556,8 @@ function migrateOrdersSheet_(sheet) {
 
   const lastRow = sheet.getLastRow();
   const sourceRows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues() : [];
-  const nonEmptyRows = sourceRows.filter((row) => row.some((value) => String(value === null || value === undefined ? "" : value).trim() !== ""));
+  const nonEmptyRows = sourceRows.filter((row) => row.slice(0, 9)
+    .some((value) => String(value === null || value === undefined ? "" : value).trim() !== ""));
   const migratedRows = nonEmptyRows.map((row) => migrateLegacyOrderRow_(row, trimmedHeaders));
 
   sheet.clear();
@@ -565,6 +566,7 @@ function migrateOrdersSheet_(sheet) {
 }
 
 function formatOrdersSheet_(sheet) {
+  clearUnusedOrderRows_(sheet);
   styleHeader_(sheet, ORDER_HEADERS.length);
   sheet.getRange("A2:A").setNumberFormat("yyyy-mm-dd hh:mm");
   sheet.getRange("H2:H").setNumberFormat("$#,##0.00");
@@ -572,7 +574,9 @@ function formatOrdersSheet_(sheet) {
   sheet.getRange(2, ORDER_COLUMN.entryStatus, sheet.getMaxRows() - 1, 1).setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInList(ENTRY_STATUSES, true).setAllowInvalid(false).build(),
   );
-  sheet.getRange(2, ORDER_COLUMN.paymentReceived, sheet.getMaxRows() - 1, 1).insertCheckboxes();
+  sheet.getRange(2, ORDER_COLUMN.paymentReceived, sheet.getMaxRows() - 1, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireCheckbox().build(),
+  );
   if (!sheet.getFilter()) sheet.getRange(1, 1, sheet.getMaxRows(), ORDER_HEADERS.length).createFilter();
 
   const widths = [145, 155, 150, 210, 120, 170, 95, 105, 240, 115, 120, 155, 165, 280];
@@ -584,6 +588,19 @@ function formatOrdersSheet_(sheet) {
     SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo("Refunded").setBackground("#fff2cc").setRanges([statusRange]).build(),
   ];
   sheet.setConditionalFormatRules(rules);
+}
+
+function clearUnusedOrderRows_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+  const values = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+  let lastDataRow = 1;
+  values.forEach((row, index) => {
+    if (row.some((value) => String(value === null || value === undefined ? "" : value).trim() !== "")) {
+      lastDataRow = index + 2;
+    }
+  });
+  if (lastDataRow < lastRow) sheet.getRange(lastDataRow + 1, 1, lastRow - lastDataRow, ORDER_HEADERS.length).clearContent();
 }
 
 function removeBlankDefaultSheet_(spreadsheet) {
@@ -697,7 +714,7 @@ function getOrderRecords_(sheet) {
   const lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
   return sheet.getRange(2, 1, lastRow - 1, ORDER_HEADERS.length).getValues()
-    .filter((row) => row.some((value) => String(value === null || value === undefined ? "" : value).trim() !== ""))
+    .filter((row) => row.slice(0, 9).some((value) => String(value === null || value === undefined ? "" : value).trim() !== ""))
     .map(recordFromRow_);
 }
 

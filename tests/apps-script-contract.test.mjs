@@ -183,6 +183,8 @@ describe("Apps Script physical jar contract", () => {
     assert.match(source, /Ben & Tori’s 50\/50 E-transfer Details/);
     assert.match(source, /refreshEverything_\(\)/);
     assert.match(source, /findRecentDuplicate_/);
+    assert.match(source, /getOrCreatePlainSheet_\(SHEET_NAMES\.JAR_ENTRIES\)/);
+    assert.match(source, /requireCheckbox\(\)/);
     assert.match(source, /private jar rows and printable name slips/);
     const retiredPatterns = [
       ["ticket", "number"],
