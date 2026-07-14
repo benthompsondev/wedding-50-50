@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title description">
+  <title id="title">Wedding 50/50 Draw Platform</title>
+  <desc id="description">Engineering overview showing a React and TypeScript frontend connected to Google Apps Script, a private Google Sheets workflow, email automation, live totals, tests, and GitHub Pages.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b2b23"/>
+      <stop offset="1" stop-color="#174b3b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d8b55b"/>
+      <stop offset="1" stop-color="#f0d58a"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#061711" flood-opacity="0.32"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" rx="28" fill="url(#background)"/>
+  <circle cx="1160" cy="80" r="180" fill="#d8b55b" opacity="0.08"/>
+  <circle cx="1160" cy="80" r="110" fill="#d8b55b" opacity="0.08"/>
+  <path d="M72 110 H230" stroke="url(#accent)" stroke-width="6" stroke-linecap="round"/>
+
+  <text x="72" y="170" fill="#fffaf0" font-family="Segoe UI, Arial, sans-serif" font-size="58" font-weight="700">Wedding 50/50 Draw Platform</text>
+  <text x="72" y="220" fill="#d9e8e1" font-family="Segoe UI, Arial, sans-serif" font-size="25">A real event workflow from public entry to private draw preparation</text>
+
+  <g filter="url(#shadow)">
+    <rect x="72" y="286" width="300" height="158" rx="18" fill="#fffdf7"/>
+    <rect x="490" y="286" width="300" height="158" rx="18" fill="#fffdf7"/>
+    <rect x="908" y="286" width="300" height="158" rx="18" fill="#fffdf7"/>
+  </g>
+
+  <text x="102" y="332" fill="#8b6d20" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="1">PUBLIC EXPERIENCE</text>
+  <text x="102" y="374" fill="#173d32" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">React + TypeScript</text>
+  <text x="102" y="407" fill="#42675b" font-family="Segoe UI, Arial, sans-serif" font-size="18">Responsive form and live totals</text>
+
+  <text x="520" y="332" fill="#8b6d20" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="1">SERVERLESS BACKEND</text>
+  <text x="520" y="374" fill="#173d32" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Google Apps Script</text>
+  <text x="520" y="407" fill="#42675b" font-family="Segoe UI, Arial, sans-serif" font-size="18">Validation, locking, and email</text>
+
+  <text x="938" y="332" fill="#8b6d20" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="1">PRIVATE OPERATIONS</text>
+  <text x="938" y="374" fill="#173d32" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Google Sheets</text>
+  <text x="938" y="407" fill="#42675b" font-family="Segoe UI, Arial, sans-serif" font-size="18">Reconciliation and printable slips</text>
+
+  <path d="M386 365 H470" stroke="#d8b55b" stroke-width="5" stroke-linecap="round"/>
+  <path d="M456 351 L474 365 L456 379" fill="none" stroke="#d8b55b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M804 365 H888" stroke="#d8b55b" stroke-width="5" stroke-linecap="round"/>
+  <path d="M874 351 L892 365 L874 379" fill="none" stroke="#d8b55b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="19" font-weight="600">
+    <rect x="72" y="510" width="230" height="56" rx="28" fill="#1f5f4a" stroke="#79a995"/>
+    <text x="187" y="545" fill="#f7fbf8" text-anchor="middle">Aggregate-only API</text>
+    <rect x="326" y="510" width="180" height="56" rx="28" fill="#1f5f4a" stroke="#79a995"/>
+    <text x="416" y="545" fill="#f7fbf8" text-anchor="middle">Email automation</text>
+    <rect x="530" y="510" width="175" height="56" rx="28" fill="#1f5f4a" stroke="#79a995"/>
+    <text x="618" y="545" fill="#f7fbf8" text-anchor="middle">Automated tests</text>
+    <rect x="729" y="510" width="210" height="56" rx="28" fill="#1f5f4a" stroke="#79a995"/>
+    <text x="834" y="545" fill="#f7fbf8" text-anchor="middle">GitHub Actions CI</text>
+    <rect x="963" y="510" width="245" height="56" rx="28" fill="#1f5f4a" stroke="#79a995"/>
+    <text x="1086" y="545" fill="#f7fbf8" text-anchor="middle">GitHub Pages delivery</text>
+  </g>
+</svg>

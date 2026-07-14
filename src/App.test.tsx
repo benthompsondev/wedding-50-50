@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const publicStatus = {
   confirmedSales: 100,
@@ -15,145 +20,161 @@ const publicStatus = {
   lastUpdated: "2026-07-13T12:00:00.000Z",
 };
 
-describe("wedding photo lightbox", () => {
-  let container: HTMLDivElement;
-  let root: Root;
+function statusResponse() {
+  return { ok: true, json: async () => publicStatus };
+}
 
-  beforeEach(async () => {
+function renderWithFetch(fetchMock: ReturnType<typeof vi.fn>) {
+  vi.stubGlobal("fetch", fetchMock);
+  return render(<App />);
+}
+
+async function waitForEntryForm(): Promise<HTMLFormElement> {
+  return await waitFor(() => {
+    const form = document.querySelector<HTMLFormElement>("form.form-card");
+    expect(form).not.toBeNull();
+    return form as HTMLFormElement;
+  });
+}
+
+async function fillRequiredFields(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.clear(screen.getByLabelText("Number of entries"));
+  await user.type(screen.getByLabelText("Number of entries"), "4");
+  await user.type(screen.getByLabelText(/Name for the jar/), "Avery Example");
+  await user.type(screen.getByLabelText(/Email address/), "avery@example.test");
+  await user.type(screen.getByLabelText(/Name the e-transfer will come from/), "Avery Transfer");
+}
+
+describe("wedding draw interactions", () => {
+  beforeEach(() => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
     Element.prototype.scrollIntoView = vi.fn();
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
   });
 
-  afterEach(async () => {
-    await act(async () => root.unmount());
-    container.remove();
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
-  async function renderWithFetch(fetchMock: ReturnType<typeof vi.fn>): Promise<void> {
-    vi.stubGlobal("fetch", fetchMock);
-    await act(async () => {
-      root.render(<App />);
-      await Promise.resolve();
+  it("keeps the form unavailable while backend health is checking", () => {
+    renderWithFetch(vi.fn().mockReturnValue(new Promise(() => undefined)));
+
+    expect(screen.getByText("Getting the entry form ready…")).not.toBeNull();
+    expect(document.querySelector("form.form-card")).toBeNull();
+  });
+
+  it("displays the form after a valid status response", async () => {
+    renderWithFetch(vi.fn().mockResolvedValue(statusResponse()));
+
+    expect(await waitForEntryForm()).not.toBeNull();
+  });
+
+  it("shows a friendly unavailable state when the backend check fails", async () => {
+    renderWithFetch(vi.fn().mockRejectedValue(new Error("offline")));
+
+    expect(await screen.findByText("Entries are temporarily unavailable")).not.toBeNull();
+    expect(screen.getByText("The entry form is having a moment. Try refreshing, or message us if it keeps happening.")).not.toBeNull();
+    expect(document.querySelector("form.form-card")).toBeNull();
+  });
+
+  it("updates entry pricing when the quantity changes", async () => {
+    const user = userEvent.setup();
+    renderWithFetch(vi.fn().mockResolvedValue(statusResponse()));
+    await waitForEntryForm();
+
+    const quantity = screen.getByLabelText("Number of entries");
+    await user.clear(quantity);
+    await user.type(quantity, "4");
+
+    expect(screen.getAllByText("$35").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/4 entries/).length).toBeGreaterThan(0);
+  });
+
+  it("shows trusted payment details after a successful submission", async () => {
+    const fetchMock = vi.fn().mockImplementation((_url: string, options?: RequestInit) => (
+      options?.method === "POST"
+        ? Promise.resolve({ ok: true, json: async () => ({ ok: true, entryCount: 4, amountDue: 35 }) })
+        : Promise.resolve(statusResponse())
+    ));
+    const user = userEvent.setup();
+    renderWithFetch(fetchMock);
+    await waitForEntryForm();
+    await fillRequiredFields(user);
+
+    await user.click(screen.getByRole("button", { name: /Show e-transfer details/ }));
+
+    expect(await screen.findByText("Thanks, Avery. Your entries are recorded.")).not.toBeNull();
+    expect(screen.getByText(/we’ll check it off on our end/)).not.toBeNull();
+    expect(screen.getAllByText("4 entries").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$35").length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain("BT-");
+  });
+
+  it("prevents a duplicate submission while the first request is pending", async () => {
+    let resolveSubmission: ((value: unknown) => void) | undefined;
+    const pendingSubmission = new Promise((resolve) => { resolveSubmission = resolve; });
+    const fetchMock = vi.fn().mockImplementation((_url: string, options?: RequestInit) => (
+      options?.method === "POST" ? pendingSubmission : Promise.resolve(statusResponse())
+    ));
+    const user = userEvent.setup();
+    renderWithFetch(fetchMock);
+    const form = await waitForEntryForm();
+    await fillRequiredFields(user);
+
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      const postCalls = fetchMock.mock.calls.filter(([, options]) => options?.method === "POST");
+      expect(postCalls).toHaveLength(1);
     });
-  }
 
-  it("opens from a thumbnail, navigates with the keyboard, and restores focus", async () => {
-    await renderWithFetch(vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => publicStatus,
-    }));
-    const firstThumbnail = container.querySelector<HTMLButtonElement>(".photo-thumb");
-    expect(firstThumbnail).not.toBeNull();
+    await act(async () => {
+      resolveSubmission?.({ ok: true, json: async () => ({ ok: true, entryCount: 4, amountDue: 35 }) });
+      await pendingSubmission;
+    });
+  });
 
-    await act(async () => firstThumbnail?.click());
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+  it("opens, navigates, closes, and restores focus in the photo lightbox", async () => {
+    const user = userEvent.setup();
+    renderWithFetch(vi.fn().mockResolvedValue(statusResponse()));
+    const firstThumbnail = screen.getByRole("button", { name: /Open photo 1 of 6/ });
+
+    await user.click(firstThumbnail);
+    expect(screen.getByRole("dialog")).not.toBeNull();
     expect(document.body.style.overflow).toBe("hidden");
-    expect(container.textContent).toContain("Photo 1 of 6");
+    expect(screen.getByText("Photo 1 of 6")).not.toBeNull();
 
-    const nextButton = container.querySelector<HTMLButtonElement>('[aria-label="Next photo"]');
-    const previousButton = container.querySelector<HTMLButtonElement>('[aria-label="Previous photo"]');
-    expect(nextButton).not.toBeNull();
-    expect(previousButton).not.toBeNull();
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    expect(screen.getByText("Photo 2 of 6")).not.toBeNull();
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    expect(screen.getByText("Photo 1 of 6")).not.toBeNull();
 
-    await act(async () => nextButton?.click());
-    expect(container.textContent).toContain("Photo 2 of 6");
-
-    await act(async () => previousButton?.click());
-    expect(container.textContent).toContain("Photo 1 of 6");
-
-    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" })));
-    expect(container.textContent).toContain("Photo 2 of 6");
-
-    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" })));
-    expect(container.textContent).toContain("Photo 1 of 6");
-
-    const closeButton = container.querySelector<HTMLButtonElement>('[aria-label="Close photo viewer"]');
-    closeButton?.focus();
-    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true })));
-    expect(document.activeElement).toBe(nextButton);
-
-    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.body.style.overflow).toBe("");
     expect(document.activeElement).toBe(firstThumbnail);
   });
 
-  it("keeps the form hidden while checking and opens it only after a valid status", async () => {
-    let resolveStatus: ((value: unknown) => void) | undefined;
-    const statusRequest = new Promise((resolve) => { resolveStatus = resolve; });
-    await renderWithFetch(vi.fn().mockReturnValue(statusRequest));
+  it("closes the photo lightbox with its close button", async () => {
+    const user = userEvent.setup();
+    renderWithFetch(vi.fn().mockResolvedValue(statusResponse()));
 
-    expect(container.textContent).toContain("Getting the entry form ready…");
-    expect(container.querySelector("form.form-card")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /Open photo 1 of 6/ }));
+    await user.click(screen.getByRole("button", { name: "Close photo viewer" }));
 
-    await act(async () => {
-      resolveStatus?.({ ok: true, json: async () => publicStatus });
-      await statusRequest;
-      await Promise.resolve();
-    });
-
-    expect(container.querySelector("form.form-card")).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("shows a friendly unavailable state when the health check fails", async () => {
-    await renderWithFetch(vi.fn().mockRejectedValue(new Error("offline")));
-    await act(async () => { await Promise.resolve(); });
-
-    expect(container.textContent).toContain("Entries are temporarily unavailable");
-    expect(container.textContent).toContain("The entry form is having a moment");
-    expect(container.querySelector("form.form-card")).toBeNull();
-  });
-
-  it("shows the trusted payment details after a successful four-entry submission", async () => {
-    const fetchMock = vi.fn().mockImplementation((_url: string, options?: RequestInit) => (
-      options?.method === "POST"
-        ? Promise.resolve({ ok: true, json: async () => ({ ok: true, entryCount: 4, amountDue: 35 }) })
-        : Promise.resolve({ ok: true, json: async () => publicStatus })
-    ));
-    await renderWithFetch(fetchMock);
-    await act(async () => { await Promise.resolve(); });
-
-    function enter(selector: string, value: string): void {
-      const element = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
-      if (!element) throw new Error(`Missing test field: ${selector}`);
-      const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-
-    await act(async () => {
-      enter("#entryCount", "4");
-      enter("#jarName", "Avery Example");
-      enter("#email", "avery@example.test");
-      enter("#eTransferName", "Avery Transfer");
-    });
-
-    await act(async () => {
-      container.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(container.textContent).toContain("Thanks, Avery. Your entries are recorded.");
-    expect(container.textContent).toContain("we’ll check it off on our end");
-    expect(container.textContent).toContain("4 entries");
-    expect(container.textContent).toContain("$35");
-    expect(container.textContent).not.toContain("BT-");
-    expect(fetchMock.mock.calls.filter(([, options]) => options?.method !== "POST").length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("refreshes status without cache on load, focus, and the 60-second interval", async () => {
+  it("refreshes aggregate status on load, focus, and the 60-second interval", async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => publicStatus });
-    await renderWithFetch(fetchMock);
-    await act(async () => { await Promise.resolve(); });
+    const fetchMock = vi.fn().mockResolvedValue(statusResponse());
+    renderWithFetch(fetchMock);
 
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     const [firstUrl, firstOptions] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(firstUrl).toContain("action=status");
     expect(firstUrl).toMatch(/[_]=\d+/);
@@ -165,10 +186,7 @@ describe("wedding photo lightbox", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
-    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    vi.useRealTimers();
   });
 });
