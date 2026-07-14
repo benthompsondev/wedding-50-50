@@ -157,15 +157,19 @@ describe("wedding 50/50 helpers", () => {
   });
 
   it("keeps the launch copy and accessible lightbox controls in the public component", () => {
-    const source = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-    expect(source).toContain("Why we’re doing this");
-    expect(source).toContain("Our little family");
-    expect(source).toContain("Lily is in charge of jar security and moral support.");
-    expect(source).toContain('role="dialog"');
-    expect(source).toContain('aria-modal="true"');
-    expect(source).toContain('event.key === "Escape"');
-    expect(source).toContain('event.key === "ArrowLeft"');
-    expect(source).toContain('event.key === "ArrowRight"');
+    const appSource = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+    expect(appSource).toContain("Why we’re doing this");
+    expect(appSource).toContain("Our little family");
+    expect(appSource).toContain("Lily is in charge of jar security and moral support.");
+    const lightboxSource = [
+      readFileSync(new URL("../components/PhotoLightbox.tsx", import.meta.url), "utf8"),
+      readFileSync(new URL("../hooks/usePhotoLightbox.ts", import.meta.url), "utf8"),
+    ].join("\n");
+    expect(lightboxSource).toContain('role="dialog"');
+    expect(lightboxSource).toContain('aria-modal="true"');
+    expect(lightboxSource).toContain('event.key === "Escape"');
+    expect(lightboxSource).toContain('event.key === "ArrowLeft"');
+    expect(lightboxSource).toContain('event.key === "ArrowRight"');
     const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
     expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
     expect(styles).toContain(".photo-thumb-label");
