@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { siteConfig } from "./config";
 import {
   calculateAmountForEntryCount,
@@ -167,11 +167,11 @@ function PrizeCounter({ status }: { status: PublicStatus | null }) {
   if (status) {
     return (
       <div className="prize-counter" aria-live="polite">
-        <p className="eyebrow eyebrow-light">Prize so far</p>
+        <p className="eyebrow eyebrow-light">Estimated prize so far</p>
         <p className="prize-number">{formatCurrency(status.winnerPrize)}</p>
-        <p className="prize-description">Based on {formatCurrency(status.confirmedSales)} collected so far.</p>
+        <p className="prize-description">Based on {formatCurrency(status.confirmedSales)} in entries submitted so far.</p>
         <p className="prize-meta">
-          {status.confirmedEntryCount} name{status.confirmedEntryCount === 1 ? "" : "s"} in the jar · Updated {formatLastUpdated(status.lastUpdated)}
+          {status.confirmedEntryCount} entr{status.confirmedEntryCount === 1 ? "y" : "ies"} recorded · Updated {formatLastUpdated(status.lastUpdated)}
         </p>
       </div>
     );
@@ -247,7 +247,7 @@ function EntryPicker({
       <div className="ticket-picker-heading">
         <div>
           <p className="eyebrow">Entries</p>
-          <h3>Choose your entries</h3>
+          <h3>How many entries?</h3>
         </div>
         <span className="ticket-limit">1–99 entries</span>
       </div>
@@ -329,9 +329,9 @@ function PaymentDetailsCard({ confirmation, onStartOver }: { confirmation: Confi
     <div className="confirmation-card" aria-live="polite">
       <div className="success-mark" aria-hidden="true">✓</div>
       <p className="eyebrow">E-transfer details</p>
-      <h3>Thanks, {getFirstName(confirmation.jarName)}. You’re almost in.</h3>
+      <h3>Thanks, {getFirstName(confirmation.jarName)}. Your entries are recorded.</h3>
       <p>
-        Send {amount} by e-transfer to {siteConfig.eTransferAddress}. Once it arrives, we’ll put your name in the jar {confirmation.entryCount === 1 ? "once" : `${confirmation.entryCount} times`}.
+        Send {amount} by e-transfer to {siteConfig.eTransferAddress}. Your entries have been recorded. Send the e-transfer when you’re ready, and we’ll check it off on our end.
       </p>
 
       <div className="confirmation-details">
@@ -404,6 +404,10 @@ function App() {
   );
   const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
   const submissionGuard = useRef(createSubmissionGuard());
+  const statusRequestInFlight = useRef(false);
+  const statusAbortController = useRef<AbortController | null>(null);
+  const hasValidPublicStatus = useRef(false);
+  const postSubmitRefreshTimer = useRef<number | null>(null);
   const photoButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const lightboxRef = useRef<HTMLDivElement | null>(null);
   const lightboxCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -421,6 +425,43 @@ function App() {
   const entryCount = parsedEntryCount ?? 1;
   const amountDue = calculateAmountForEntryCount(entryCount);
 
+  const refreshPublicStatus = useCallback(async (): Promise<void> => {
+    if (!configurationReady || statusRequestInFlight.current) return;
+
+    statusRequestInFlight.current = true;
+    const controller = new AbortController();
+    statusAbortController.current = controller;
+    const endpoint = siteConfig.appsScriptEndpoint.trim();
+    const separator = endpoint.includes("?") ? "&" : "?";
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const response = await fetch(`${endpoint}${separator}action=status&_=${Date.now()}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Status request failed");
+      const status = parsePublicStatus(await response.json() as unknown);
+      if (!status) throw new Error("Status response was invalid");
+      hasValidPublicStatus.current = true;
+      setPublicStatus(status);
+      setBackendReadiness("ready");
+    } catch (error) {
+      if (!controller.signal.aborted && !hasValidPublicStatus.current) {
+        setPublicStatus(null);
+        setBackendReadiness("unavailable");
+      }
+      if (import.meta.env.DEV && !controller.signal.aborted) {
+        console.warn("Wedding 50/50 backend health check failed.", error);
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (statusAbortController.current === controller) statusAbortController.current = null;
+      statusRequestInFlight.current = false;
+    }
+  }, [configurationReady]);
+
   useEffect(() => {
     if (!configurationReady) {
       setBackendReadiness("preview");
@@ -428,42 +469,24 @@ function App() {
       return undefined;
     }
 
-    const controller = new AbortController();
-    let active = true;
-    const endpoint = siteConfig.appsScriptEndpoint.trim();
-    const separator = endpoint.includes("?") ? "&" : "?";
-    const timeout = window.setTimeout(() => controller.abort(), 8000);
     setBackendReadiness("checking");
-
-    fetch(`${endpoint}${separator}action=status`, {
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Status request failed");
-        return response.json() as Promise<unknown>;
-      })
-      .then((payload) => {
-        if (!active) return;
-        const status = parsePublicStatus(payload);
-        if (!status) throw new Error("Status response was invalid");
-        setPublicStatus(status);
-        setBackendReadiness("ready");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setPublicStatus(null);
-        setBackendReadiness("unavailable");
-        if (import.meta.env.DEV) console.warn("Wedding 50/50 backend health check failed.", error);
-      })
-      .finally(() => window.clearTimeout(timeout));
+    void refreshPublicStatus();
+    const interval = window.setInterval(() => { void refreshPublicStatus(); }, 60_000);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void refreshPublicStatus();
+    };
+    const handleFocus = () => { void refreshPublicStatus(); };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
-      active = false;
-      window.clearTimeout(timeout);
-      controller.abort();
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+      statusAbortController.current?.abort();
+      if (postSubmitRefreshTimer.current !== null) window.clearTimeout(postSubmitRefreshTimer.current);
     };
-  }, [configurationReady]);
+  }, [configurationReady, refreshPublicStatus]);
 
   useEffect(() => {
     if (import.meta.env.DEV && backendReadiness === "preview") {
@@ -602,6 +625,12 @@ function App() {
       setConfirmation({ jarName: form.jarName.trim(), entryCount: serverCount, amountDue: serverAmount });
       setForm({ ...initialForm, entryCount: String(serverCount) });
       setErrors({});
+      void refreshPublicStatus();
+      if (postSubmitRefreshTimer.current !== null) window.clearTimeout(postSubmitRefreshTimer.current);
+      postSubmitRefreshTimer.current = window.setTimeout(() => {
+        postSubmitRefreshTimer.current = null;
+        void refreshPublicStatus();
+      }, 3500);
     } catch (error) {
       submissionGuard.current.release();
       setSubmitError(error instanceof Error ? error.message : "We couldn’t save that. Please try again.");
@@ -667,13 +696,13 @@ function App() {
               <p className="eyebrow">The prize</p>
               <h2 id="prize-title">Winner gets half the pot.</h2>
             </div>
-            <p>Every paid entry adds to the pot.</p>
+            <p>Every submitted entry adds to the running total. We’ll reconcile the e-transfers before the draw.</p>
           </div>
           <div className="prize-panel">
             <PrizeCounter status={siteConfig.publicPrizeCounterEnabled ? publicStatus : null} />
             <div className="prize-panel-note">
               <span className="note-icon" aria-hidden="true">✓</span>
-              <p><strong>One paid entry means one slip in the jar.</strong> Buy four entries and your name goes in four times.</p>
+              <p><strong>One entry means one slip in the jar.</strong> Buy four entries and your name goes in four times.</p>
             </div>
           </div>
         </section>
@@ -702,7 +731,7 @@ function App() {
             <li><span>01</span><h3>Choose your entries</h3><p>Pick how many times you want your name in the jar.</p></li>
             <li><span>02</span><h3>Fill out the form</h3><p>Tell us your name and the name your e-transfer will come from.</p></li>
             <li><span>03</span><h3>Send the e-transfer</h3><p>After you submit, send the amount shown to {siteConfig.eTransferAddress}.</p></li>
-            <li><span>04</span><h3>We add your name</h3><p>Once the e-transfer comes through, we’ll add your name to our private draw list once for every entry and print the slips for the jar.</p></li>
+            <li><span>04</span><h3>We record your entries</h3><p>Once you submit, we’ll add your name to our private draw list once for every entry. We’ll reconcile the e-transfers before the draw.</p></li>
           </ol>
           <p className="steps-note">On August 15, we’ll mix all the slips in a jar, draw one on video, and post the winner.</p>
         </section>
@@ -791,7 +820,7 @@ function App() {
                     <div><span>Entries</span><strong>{entryCount}</strong></div>
                     <div><span>Amount</span><strong>{formatCurrency(amountDue)}</strong></div>
                   </div>
-                  <p className="payment-note"><span aria-hidden="true">✦</span> Once the payment arrives, we’ll add your name to the jar.</p>
+                  <p className="payment-note"><span aria-hidden="true">✦</span> Once you submit, we’ll record your entries. We’ll check the e-transfer before the draw.</p>
                 </aside>
               ) : null}
             </div>
@@ -816,7 +845,7 @@ function App() {
           <div className="page-width">
             <div className="section-heading section-heading-split">
               <div><p className="eyebrow">The jar draw</p><h2 id="draw-title">Draw details</h2></div>
-              <p>We’ll put every paid entry into the jar as a separate name slip, mix them up, and draw one on video.</p>
+              <p>We’ll put every included entry into the jar as a separate name slip, mix them up, and draw one on video.</p>
             </div>
             <div className="draw-grid">
               <div className="draw-card draw-card-featured"><span>Entries close</span><strong>{formatEventDateTime(siteConfig.salesClosingDate)}</strong></div>
@@ -850,8 +879,8 @@ function App() {
           </div>
           <div className="good-to-know-grid">
             <article><h3>How much are entries?</h3><p>Entries are $10 each or 3 for $25. Every entry puts your name in the jar once.</p></article>
-            <article><h3>How do I pay?</h3><p>Fill out the form first, then send the amount shown by e-transfer to {siteConfig.eTransferAddress}. Use the same first and last name you entered on the form so we can match the payment. Once it comes through, we’ll add your name to the jar once for every entry.</p></article>
-            <article><h3>When is my name added?</h3><p>Once we receive your e-transfer, we’ll add your name to the jar once for every entry you bought.</p></article>
+            <article><h3>How do I pay?</h3><p>Fill out the form first, then send the amount shown by e-transfer to {siteConfig.eTransferAddress}. Use the same first and last name you entered on the form so we can match the payment. Once you submit, we’ll record your entries and check the e-transfer before the draw.</p></article>
+            <article><h3>When is my name added?</h3><p>As soon as you submit the form, we’ll record one entry for every name slip you selected. We’ll check the e-transfer before the draw.</p></article>
             <article><h3>How is the winner picked?</h3><p>We’ll mix all the name slips in a jar and draw one on video on August 15.</p></article>
             <article><h3>How will the winner know?</h3><p>We’ll contact the winner directly and post their first name and last initial here.</p></article>
           </div>

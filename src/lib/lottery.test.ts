@@ -65,6 +65,18 @@ describe("wedding 50/50 helpers", () => {
     expect(validateEntryForm({ ...validForm, honeypot: "bot" })).toHaveProperty("form");
   });
 
+  it("warns about obvious email-domain typos without rejecting unfamiliar valid providers", () => {
+    for (const [domain, suggestion] of [
+      ["hot.ail.com", "hotmail.com"],
+      ["hotmai.com", "hotmail.com"],
+      ["gmial.com", "gmail.com"],
+      ["gmal.com", "gmail.com"],
+    ]) {
+      expect(validateEntryForm({ ...validForm, email: `person@${domain}` }).email).toContain(suggestion);
+    }
+    expect(validateEntryForm({ ...validForm, email: "person@small-provider.example" })).toEqual({});
+  });
+
   it("keeps preview mode until valid dates and an endpoint are present", () => {
     const close = "2026-08-15T18:00:00-04:00";
     const draw = "2026-08-15T20:00:00-04:00";
@@ -157,5 +169,7 @@ describe("wedding 50/50 helpers", () => {
     const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
     expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
     expect(styles).toContain(".photo-thumb-label");
+    const config = readFileSync(new URL("../config.ts", import.meta.url), "utf8");
+    expect(config).toContain("Ben and Tori sharing a quiet moment in the golden sunset light");
   });
 });

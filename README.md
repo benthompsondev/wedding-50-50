@@ -1,6 +1,6 @@
 # Ben & Tori’s Wedding 50/50
 
-We’re skipping the stag and doe and doing one 50/50 for friends and family instead. Entries are $10 each or 3 for $25. Once an e-transfer is confirmed, the guest’s chosen name is added to the private jar list once for every paid entry.
+We’re skipping the stag and doe and doing one 50/50 for friends and family instead. Entries are $10 each or 3 for $25. A successful form submission adds the guest’s chosen name to the private jar list once for every entry. Ben and Tori check the e-transfer separately before the draw.
 
 Ben and Tori will print and cut those name slips, mix them in a physical jar, and draw one name on video. The winner gets half the confirmed pot, and the other half helps with the wedding.
 
@@ -84,25 +84,25 @@ The Sheet contains guest names, contact information, payment state, and internal
 
 Do not put a Sheet URL, Google credential, API key, or private identifier in the frontend.
 
-## Day-to-day payment workflow
+## Day-to-day workflow
 
 1. A guest chooses 1–99 entries and submits their name and email.
-2. The backend saves a `Pending` row and emails the e-transfer address and trusted amount.
-3. Match the transfer using the e-transfer sender name, amount, and guest details. Ask the guest directly if the match is unclear.
-4. Select the row in `Orders` and choose **Wedding Draw > Confirm Selected Payment**.
-5. The row becomes `Paid`, one private `Jar Entries` row is created per entry, and the guest receives a friendly confirmation.
+2. The backend saves an `Included` row, emails the trusted amount, and rebuilds Summary, Jar Entries, and Printable Jar Slips.
+3. Match the transfer using the e-transfer sender name, amount, and guest details. Check **Payment Received** when it arrives.
+4. If payment never arrives, change **Entry Status** to `Cancelled`. Use `Refunded` when money was returned.
+5. Status changes rebuild the totals and remove cancelled or refunded slips from the current draw.
 
-Use **Re-send E-transfer Details** or **Re-send Paid Confirmation** when needed. Refunding a paid row preserves the private history but removes its name slips from `Jar Entries`.
+Use **Wedding Draw > Refresh Everything** whenever you want a manual reconciliation. **Re-send E-transfer Details** is available for a selected row.
 
 ## Preparing the physical jar
 
 After entries close and payments are reconciled:
 
-1. Refresh `Summary` and `Jar Entries`.
-2. Check that confirmed sales and the number of jar rows match the paid Orders rows.
+1. Run **Wedding Draw > Refresh Everything**.
+2. Check that submitted value and the number of jar rows match the Included Orders rows.
 3. Choose **Wedding Draw > Create Jar Snapshot** to preserve a private, timestamped copy and hash.
 4. Choose **Wedding Draw > Create Printable Jar Slips**.
-5. Confirm the alert reports the same number of printable slips and paid entries.
+5. Confirm the alert reports the same number of printable slips and included entries.
 6. Print the `Printable Jar Slips` sheet at 100% scale.
 7. Cut every bordered cell into a separate slip.
 8. Count the physical slips again, fold them the same way, and place all of them in the jar.
@@ -133,7 +133,7 @@ No names, emails, phone numbers, internal IDs, messages, or individual payment r
 - **A submission fails:** check the browser console and Apps Script execution log. Keep it in the error state unless the backend returns `{ "ok": true }`.
 - **The Sheet menu is missing:** reload the bound Sheet or run `setupSpreadsheet` once from the Apps Script editor.
 - **An email fails:** check MailApp quota and the row’s `Notes` column, then use the matching re-send menu item.
-- **The jar count is wrong:** stop, inspect every paid Orders row, correct the private ledger, and refresh `Jar Entries` before printing.
+- **The jar count is wrong:** stop, inspect every Included Orders row, correct the private ledger, and run **Refresh Everything** before printing.
 - **GitHub Pages assets fail:** keep `base: "/wedding-50-50/"` in `vite.config.ts`, run a local build, and confirm Pages uses GitHub Actions.
 
 ## Launch status

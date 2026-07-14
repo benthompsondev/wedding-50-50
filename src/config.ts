@@ -1,7 +1,7 @@
 export const siteConfig = {
   title: "Ben & Tori’s Wedding 50/50",
   tagline:
-    "We decided to skip the stag and doe and do one 50/50 instead. Pick how many entries you want, and once your e-transfer comes through, we’ll put your name in the jar once for each one. The winner gets half the pot, and the other half helps us with the wedding.",
+    "We decided to skip the stag and doe and do one 50/50 instead. Pick how many entries you want and we’ll record your name once for each one. We’ll check the e-transfer before the draw. The winner gets half the pot, and the other half helps us with the wedding.",
   weddingDate: "October 10, 2026",
   location: "Cambridge, Ontario",
   eTransferAddress: "torigabriellerivard@hotmail.com",
@@ -40,7 +40,7 @@ export const siteConfig = {
       },
       {
         src: "./images/kiss-with-lily.jpg",
-        alt: "Ben and Tori giving Lily a kiss",
+        alt: "Ben and Tori sharing a quiet moment in the golden sunset light",
       },
       {
         src: "./images/pumpkin-date.jpg",

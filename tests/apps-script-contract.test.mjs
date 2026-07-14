@@ -18,12 +18,16 @@ vm.runInContext(
     countPrintableSlips_,
     calculateSummary_,
     buildPublicStatus_,
+    normalizeEntryStatus_,
+    migrateLegacyOrderRow_,
+    findRecentDuplicate_,
   };`,
   context,
 );
 
 const helpers = context.__helpers;
-const paidRecord = (overrides = {}) => ({
+const includedRecord = (overrides = {}) => ({
+  submittedAt: new Date("2026-07-10T12:00:00-04:00"),
   internalOrderId: "BT-ABC123-TEST",
   jarName: "Sample Guest",
   email: "sample@example.test",
@@ -32,8 +36,10 @@ const paidRecord = (overrides = {}) => ({
   entryCount: 4,
   amountDue: 35,
   message: "",
-  paymentStatus: "Paid",
-  paymentConfirmedAt: new Date("2026-07-10T12:00:00-04:00"),
+  entryStatus: "Included",
+  paymentReceived: false,
+  paymentReceivedAt: "",
+  paymentInstructionsSent: "Yes",
   ...overrides,
 });
 
@@ -70,22 +76,42 @@ describe("Apps Script physical jar contract", () => {
     assert.equal(payload.amountDue, 50);
   });
 
-  it("creates one private row for every paid entry", () => {
+  it("migrates Complete and Paid legacy rows to Included", () => {
+    const headers = [
+      "Submitted At", "Internal Order ID", "Name for Jar", "Email", "Phone", "E-transfer Name",
+      "Entry Count", "Amount Due", "Message", "Payment Status", "Payment Confirmed At",
+      "Payment Instructions Sent", "Paid Confirmation Sent", "Notes",
+    ];
+    const makeRow = (status, paidConfirmation) => [
+      new Date("2026-07-10T12:00:00-04:00"), "BT-ABC123-TEST", "Sample Guest", "sample@example.test", "",
+      "Sample Guest", 3, 25, "", status, new Date("2026-07-10T12:05:00-04:00"), "Yes", paidConfirmation, "",
+    ];
+    const complete = helpers.migrateLegacyOrderRow_(makeRow("Complete", "Yes"), headers);
+    const paid = helpers.migrateLegacyOrderRow_(makeRow("Paid", "No"), headers);
+    assert.equal(complete[9], "Included");
+    assert.equal(complete[10], true);
+    assert.equal(paid[9], "Included");
+    assert.equal(paid[10], false);
+    assert.equal(helpers.normalizeEntryStatus_("Pending"), "Included");
+  });
+
+  it("creates one private row for every included entry and excludes cancelled or refunded rows", () => {
     const rows = helpers.buildJarEntryRows_([
-      paidRecord(),
-      paidRecord({ internalOrderId: "BT-ABC125-TEST", jarName: "Second Guest", entryCount: 6, amountDue: 50 }),
-      paidRecord({ internalOrderId: "BT-ABC126-TEST", paymentStatus: "Pending" }),
-      paidRecord({ internalOrderId: "BT-ABC127-TEST", paymentStatus: "Refunded" }),
+      includedRecord(),
+      includedRecord({ internalOrderId: "BT-ABC125-TEST", jarName: "Second Guest", entryCount: 6, amountDue: 50 }),
+      includedRecord({ internalOrderId: "BT-ABC126-TEST", entryStatus: "Cancelled" }),
+      includedRecord({ internalOrderId: "BT-ABC127-TEST", entryStatus: "Refunded" }),
     ]);
     assert.equal(rows.length, 10);
     assert.deepEqual(Array.from(rows.slice(0, 4).map((row) => row[5])), [1, 2, 3, 4]);
     assert.equal(rows.filter((row) => row[0] === "Second Guest").length, 6);
   });
 
-  it("creates exactly one row for one paid entry", () => {
-    const rows = helpers.buildJarEntryRows_([paidRecord({ entryCount: 1, amountDue: 10 })]);
+  it("creates exactly one row and one printable slip for one included entry", () => {
+    const rows = helpers.buildJarEntryRows_([includedRecord({ entryCount: 1, amountDue: 10 })]);
     assert.equal(rows.length, 1);
     assert.equal(rows[0][5], 1);
+    assert.equal(helpers.countPrintableSlips_(helpers.buildPrintableSlipGrid_(rows.map((row) => row[0]), 2)), 1);
   });
 
   it("rejects submissions at and after the closing time", () => {
@@ -105,7 +131,7 @@ describe("Apps Script physical jar contract", () => {
     );
   });
 
-  it("keeps printable slip count equal to paid entry count", () => {
+  it("keeps printable slip count equal to included entry count", () => {
     const names = ["A", "A", "B", "C", "C", "C"];
     const grid = helpers.buildPrintableSlipGrid_(names, 2);
     assert.equal(grid.length, 3);
@@ -114,8 +140,8 @@ describe("Apps Script physical jar contract", () => {
 
   it("returns aggregate-only public status", () => {
     const status = helpers.buildPublicStatus_([
-      paidRecord(),
-      paidRecord({ internalOrderId: "BT-ABC128-TEST", jarName: "Second Guest", entryCount: 3, amountDue: 25 }),
+      includedRecord(),
+      includedRecord({ internalOrderId: "BT-ABC128-TEST", jarName: "Second Guest", entryCount: 3, amountDue: 25 }),
     ], "2026-07-10T16:00:00.000Z");
     assert.deepEqual(Array.from(Object.keys(status)), [
       "confirmedSales",
@@ -127,12 +153,37 @@ describe("Apps Script physical jar contract", () => {
     assert.equal(status.confirmedSales, 60);
     assert.equal(status.confirmedEntryCount, 7);
     assert.equal(status.winnerPrize, 30);
+    assert.equal(status.paidOrderCount, 2);
+  });
+
+  it("calculates submitted totals and payment-checkbox totals independently", () => {
+    const summary = helpers.calculateSummary_([
+      includedRecord({ entryCount: 3, amountDue: 25, paymentReceived: true }),
+      includedRecord({ internalOrderId: "BT-ABC129-TEST", entryCount: 3, amountDue: 25, paymentReceived: false }),
+      includedRecord({ internalOrderId: "BT-ABC130-TEST", entryStatus: "Cancelled", entryCount: 3, amountDue: 25, paymentReceived: true }),
+    ]);
+    assert.equal(summary.submittedEntryValue, 50);
+    assert.equal(summary.paymentsReceived, 25);
+    assert.equal(summary.paymentsStillToCheck, 25);
+    assert.equal(summary.includedOrderCount, 2);
+    assert.equal(summary.includedEntryCount, 6);
+    assert.equal(summary.winnerPrize, 25);
+  });
+
+  it("blocks only matching submissions inside the two-minute duplicate window", () => {
+    const now = new Date("2026-07-10T12:01:30-04:00");
+    const payload = includedRecord({ submittedAt: undefined });
+    assert.ok(helpers.findRecentDuplicate_([includedRecord()], payload, now, 120000));
+    assert.equal(helpers.findRecentDuplicate_([
+      includedRecord({ submittedAt: new Date("2026-07-10T11:58:00-04:00") }),
+    ], payload, now, 120000), null);
   });
 
   it("contains the intended email subjects and omits retired public concepts", () => {
     assert.match(source, /Ben & Tori’s 50\/50 E-transfer Details/);
-    assert.match(source, /You’re in Ben & Tori’s Wedding 50\/50/);
-    assert.match(source, /physical jar/);
+    assert.match(source, /refreshEverything_\(\)/);
+    assert.match(source, /findRecentDuplicate_/);
+    assert.match(source, /private jar rows and printable name slips/);
     const retiredPatterns = [
       ["ticket", "number"],
       ["winning", "ticket"],

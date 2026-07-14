@@ -28,6 +28,12 @@ export type CountdownParts = {
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_DOMAIN_SUGGESTIONS: Record<string, string> = {
+  "hot.ail.com": "hotmail.com",
+  "hotmai.com": "hotmail.com",
+  "gmial.com": "gmail.com",
+  "gmal.com": "gmail.com",
+};
 export const MIN_ENTRY_COUNT = 1;
 export const MAX_ENTRY_COUNT = 99;
 
@@ -112,7 +118,14 @@ export function validateEntryForm(form: EntryFormData): EntryFormErrors {
   const errors: EntryFormErrors = {};
 
   if (!form.jarName.trim()) errors.jarName = "Please enter the name you want us to put in the jar.";
-  if (!EMAIL_PATTERN.test(form.email.trim())) errors.email = "Please enter a valid email address.";
+  const email = form.email.trim();
+  if (!EMAIL_PATTERN.test(email)) {
+    errors.email = "Please enter a valid email address.";
+  } else {
+    const domain = email.split("@").pop()?.toLowerCase() ?? "";
+    const suggestion = EMAIL_DOMAIN_SUGGESTIONS[domain];
+    if (suggestion) errors.email = `Please double-check your email address. Did you mean ${suggestion}?`;
+  }
   if (parseEntryCount(form.entryCount) === null) {
     errors.entryCount = `Choose between ${MIN_ENTRY_COUNT} and ${MAX_ENTRY_COUNT} whole entries.`;
   }
