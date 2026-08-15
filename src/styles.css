@@ -109,6 +109,25 @@ img { display: block; max-width: 100%; }
 .section-heading-narrow { max-width: 500px; }
 .section-heading-light h2, .section-heading-light p:not(.eyebrow) { color: var(--cream); }
 
+.thank-you-section { max-width: 940px; }
+.thank-you-copy { padding: clamp(30px, 6vw, 64px); border-left: 4px solid var(--gold); background: var(--paper); box-shadow: var(--shadow); }
+.thank-you-copy h2, .winning-draw-heading h2, .winner-inner h2 { margin: 0 0 25px; font-family: "Playfair Display", Georgia, serif; font-weight: 500; letter-spacing: -0.055em; line-height: 0.98; }
+.thank-you-copy h2, .winning-draw-heading h2 { color: var(--forest); font-size: clamp(2.8rem, 6vw, 5rem); }
+.thank-you-copy > p:not(.eyebrow) { max-width: 750px; margin: 0 0 18px; color: var(--muted); font-size: clamp(1rem, 2vw, 1.1rem); line-height: 1.78; }
+.thank-you-copy .thank-you-signoff { margin: 30px 0 0; color: var(--forest); }
+.thank-you-signoff strong { font-family: "Playfair Display", Georgia, serif; font-size: 1.35rem; font-weight: 500; line-height: 1.6; }
+
+.winning-draw-heading { margin-right: auto; margin-left: auto; text-align: center; }
+.winning-video-wrap { display: grid; place-items: center; }
+.winning-video { display: block; width: min(100%, 680px); max-height: min(78vh, 960px); aspect-ratio: 9 / 16; border: 1px solid rgba(184, 143, 78, 0.4); border-radius: 4px; background: #071712; box-shadow: var(--shadow); }
+
+.winner-section { position: relative; overflow: hidden; color: var(--cream); background: radial-gradient(circle at 82% 18%, rgba(215, 184, 120, 0.16), transparent 32%), var(--forest); }
+.winner-inner { position: relative; text-align: center; }
+.winner-inner h2 { max-width: 940px; margin-right: auto; margin-left: auto; color: var(--cream); font-size: clamp(3rem, 7vw, 6.2rem); }
+.winner-prize { margin: 0; color: rgba(255, 253, 249, 0.86); font-family: "Playfair Display", Georgia, serif; font-size: clamp(1.5rem, 4vw, 2.7rem); line-height: 1.25; }
+.winner-prize strong { color: var(--gold); font-size: 1.25em; font-weight: 600; white-space: nowrap; }
+.winner-message { max-width: 690px; margin: 28px auto 0; color: rgba(255, 253, 249, 0.72); font-size: 1rem; line-height: 1.75; }
+
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 13px; min-height: 48px; padding: 12px 19px; border: 1px solid transparent; border-radius: 999px; font-size: 0.82rem; font-weight: 700; transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease; }
 .button:hover { transform: translateY(-2px); }
 .button:focus-visible, .copy-button:focus-visible, .text-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid rgba(215, 184, 120, 0.8); outline-offset: 3px; }
@@ -351,6 +370,9 @@ img { display: block; max-width: 100%; }
   .section { padding-top: 76px; padding-bottom: 76px; }
   .section-heading { margin-bottom: 32px; }
   .section-heading h2, .story-copy h2 { font-size: clamp(2.45rem, 12vw, 3.7rem); }
+  .thank-you-copy { padding: 30px 23px; }
+  .thank-you-copy h2, .winning-draw-heading h2 { font-size: clamp(2.6rem, 13vw, 3.8rem); }
+  .winner-inner h2 { font-size: clamp(2.75rem, 13vw, 4.2rem); }
   .prize-intro { padding-bottom: 66px; }
   .prize-panel-note { align-items: flex-start; }
   .form-grid { grid-template-columns: 1fr; }

@@ -1,7 +1,7 @@
 export const siteConfig = {
   title: "Ben & Tori’s Wedding 50/50",
   tagline:
-    "We decided to skip the stag and doe and do one 50/50 instead. Pick how many entries you want and we’ll record your name once for each one. We’ll check the e-transfer before the draw. The winner gets half the pot, and the other half helps us with the wedding.",
+    "Our draw is complete. Thank you to everyone who joined in and helped support our wedding and honeymoon. We’re so grateful, and we’re excited to share the winning draw with you.",
   weddingDate: "October 10, 2026",
   location: "Cambridge, Ontario",
   eTransferAddress: "torigabriellerivard@hotmail.com",
@@ -14,16 +14,15 @@ export const siteConfig = {
   publicPrizeCounterEnabled: true,
 
   winnerAnnouncement: {
-    announced: false,
-    firstName: "",
-    lastInitial: "",
-    finalPrize: null as number | null,
-    drawVideoUrl: "",
+    announced: true,
+    name: "Alanna Thompson",
+    finalPrize: 1100,
+    drawVideoUrl: "./videos/winning-draw.mp4",
   },
 
   photos: {
     hero: "./images/hero-pumpkin.jpg",
-    socialPreview: "./images/social-preview.jpg",
+    socialPreview: "./images/hero-pumpkin.jpg",
     family: "./images/family-lily.jpg",
     gallery: [
       {

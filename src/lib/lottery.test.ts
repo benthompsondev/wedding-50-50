@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   calculateAmountForEntryCount,
@@ -156,11 +156,19 @@ describe("wedding 50/50 helpers", () => {
     for (const phrase of removedPhrases) expect(source).not.toContain(phrase);
   });
 
-  it("keeps the launch copy and accessible lightbox controls in the public component", () => {
+  it("includes the winning draw video in the public site assets", () => {
+    const video = new URL("../../public/videos/winning-draw.mp4", import.meta.url);
+    expect(statSync(video).size).toBeGreaterThan(0);
+  });
+
+  it("keeps the completed-draw copy, video, and accessible lightbox controls in the public component", () => {
     const appSource = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-    expect(appSource).toContain("Why we’re doing this");
+    expect(appSource).toContain("The draw is complete");
+    expect(appSource).toContain("Congratulations {siteConfig.winnerAnnouncement.name}");
+    expect(appSource).toContain('className="winning-video" controls playsInline');
+    expect(appSource).not.toContain("<EntryForm");
     expect(appSource).toContain("Our little family");
-    expect(appSource).toContain("Lily is in charge of jar security and moral support.");
+    expect(appSource).toContain("Lily was in charge of jar security and moral support.");
     const lightboxSource = [
       readFileSync(new URL("../components/PhotoLightbox.tsx", import.meta.url), "utf8"),
       readFileSync(new URL("../hooks/usePhotoLightbox.ts", import.meta.url), "utf8"),
